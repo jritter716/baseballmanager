@@ -118,6 +118,21 @@ async function run() {
   await resumed.reconcile();
   ok(resumed.getLog().some((e) => e.id === "external-1"), "reconcile pulls server-only events into the local log");
 
+  // --- opening an existing game by id (Phase 4) doesn't create a duplicate ---
+  {
+    const srv = makeServer();
+    const a = createSyncClient({ setup, fetchImpl: srv.fetchImpl, online: () => true, autoFlush: false, installListeners: false, storage: memoryStorage() });
+    await a.init();
+    a.commit([pitch()]);
+    await a.flushNow();
+    const gid = a.gameId;
+    const b = createSyncClient({ setup, gameId: gid, fetchImpl: srv.fetchImpl, online: () => true, autoFlush: false, installListeners: false, storage: memoryStorage() });
+    await b.init(); // opens existing game by id
+    ok(b.gameId === gid, "opening by gameId keeps the same game");
+    eq(b.getLog().length, 1, "opened client pulled the existing event");
+    eq(srv.store.list().length, 1, "no duplicate game created when opening by id");
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

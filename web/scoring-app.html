@@ -286,20 +286,14 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 
 /* The backend + offline queue work same-origin by default; override with ?api=URL. */
 const API_BASE = new URLSearchParams(location.search).get("api") || "";
+const gameId = new URLSearchParams(location.search).get("game");
+/* No game chosen -> go pick or create one. */
+if (!gameId) location.replace("setup.html" + (API_BASE ? ("?api=" + encodeURIComponent(API_BASE)) : ""));
 
-/* ----- setup (one game; the scorer's roster is hardcoded for now) ----- */
-const NAMES={};
-function L(playerId,position,name){NAMES[playerId]=name;return {playerId,position,name};}
-const setup={
-  away:{teamId:"Mustangs",battingOrder:[
-    L("m1","SS","Avery P."),L("m2","CF","Mason T."),L("m3","1B","Diego R."),
-    L("m4","C","Liam K."),L("m5","3B","Noah B."),L("m6","2B","Eli W."),
-    L("m7","RF","Caleb M."),L("m8","LF","Owen S."),L("m9","P","Jack D.")]},
-  home:{teamId:"Hawks",battingOrder:[
-    L("h1","SS","Tyler M."),L("h2","CF","Sam K."),L("h3","1B","Marcus D."),
-    L("h4","C","Cole R."),L("h5","3B","Drew L."),L("h6","2B","Ben A."),
-    L("h7","RF","Luca P."),L("h8","LF","Ivan G."),L("h9","P","Reese T.")]},
-};
+/* This game's teams + lineup come from the server (created in setup.html) and are
+   cached locally so the game reopens offline. No roster is hardcoded here. */
+let setup=null, NAMES={}, client=null;
+const SETUP_KEY="scorekeeper:setup:"+gameId;
 function nameOf(id){return NAMES[id]||id;}
 function posOf(state,id){const all=[...state.lineup.away,...state.lineup.home];const s=all.find(x=>x.playerId===id);return s?s.position:"";}
 const DAILY_MAX=85;
@@ -307,14 +301,10 @@ const DAILY_MAX=85;
 /* ----- offline-first log: every tap is applied locally, queued, and synced ----- */
 const NO_PITCH=new Set(["walk","strikeout"]); // walk/strikeout arrive without an extra contact pitch
 const TEMP=2e9; // sort key to apply a not-yet-committed pitch last when previewing the count
-const client=createSyncClient({
-  setup, baseUrl:API_BASE,
-  storage:browserStorage("scorekeeper:game"),
-  onChange:render, onStatus:renderStatus,
-});
-const log=()=>client.getLog();
+const log=()=>client?client.getLog():[];
 
 function doPitch(result){
+  if(!client) return;
   const before=reduce(setup,log());
   const p=currentPitcher(before), b=currentBatter(before);
   const pitch={type:"pitch",pitcher:p,result};
@@ -325,6 +315,7 @@ function doPitch(result){
   client.commit(evs);
 }
 function doOutcome(outcome){
+  if(!client) return;
   if(adjustMode){ openOverride(outcome); return; }   // adjust-runners armed -> open sheet
   commitOutcome(outcome);                              // routine: one tap, engine defaults
 }
@@ -388,11 +379,13 @@ function confirmOverride(){
 function closeSheet(){ document.getElementById("sheet").classList.remove("open"); pending=null; }
 
 function doSteal(b){
+  if(!client) return;
   const s=reduce(setup,log()); const id=s.bases[b]; if(!id)return;
   const to=b===3?"home":b+1;
   client.commit([{type:"baserunning",kind:"stolen_base",pitcher:currentPitcher(s),runners:[{id,from:b,to}]}]);
 }
 function doCaught(b){
+  if(!client) return;
   const s=reduce(setup,log()); const id=s.bases[b]; if(!id)return;
   client.commit([{type:"baserunning",kind:"caught_stealing",pitcher:currentPitcher(s),runners:[{id,from:b,to:"out",outBy:["C","2B"]}]}]);
 }
@@ -501,8 +494,21 @@ document.getElementById("downloadCsv").addEventListener("click",()=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="game.csv";a.click();URL.revokeObjectURL(a.href);
 });
 
-/* Boot: load the persisted log, render immediately (offline-first), then sync. */
-client.init();
+/* Boot: load this game's setup (server, cached for offline), then start the
+   offline-first sync client for it. */
+async function boot(){
+  if(!gameId) return;
+  try{
+    const r=await fetch(API_BASE+"/games/"+gameId+"/export.json");
+    if(r.ok){ setup=(await r.json()).setup; localStorage.setItem(SETUP_KEY,JSON.stringify(setup)); }
+  }catch(e){ /* offline: fall back to cache */ }
+  if(!setup){ const c=localStorage.getItem(SETUP_KEY); if(c){ try{ setup=JSON.parse(c); }catch{} } }
+  if(!setup){ document.getElementById("batterName").textContent="Open while online"; flash("Couldn't load this game — open it once while online."); return; }
+  NAMES={}; for(const side of ["away","home"]) for(const sl of setup[side].battingOrder) NAMES[sl.playerId]=sl.name||sl.playerId;
+  client=createSyncClient({ setup, gameId, baseUrl:API_BASE, storage:browserStorage("scorekeeper:game:"+gameId), onChange:render, onStatus:renderStatus });
+  client.init();
+}
+boot();
 </script>
 </body>
 </html>
