@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Scorekeeper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0b1014;
+    --field: #0f1a16;
+    --panel: #141c22;
+    --panel-2: #1b242b;
+    --line: #2a363f;
+    --ink: #eef3f2;
+    --muted: #8aa0a0;
+    --dim: #5f7373;
+    --amber: #f2a93b;
+    --amber-deep: #b97812;
+    --green: #3aa564;
+    --green-deep: #1f6d40;
+    --red: #e0584f;
+    --chalk: #d8e0dd;
+    --display: "Saira Condensed", sans-serif;
+    --body: "Hanken Grotesk", sans-serif;
+    --mono: "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--body);
+    background:
+      radial-gradient(120% 80% at 50% -10%, #16221d 0%, var(--bg) 55%),
+      var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 18px 12px 40px;
+  }
+  .phone {
+    width: 100%;
+    max-width: 380px;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .pad { padding: 14px 15px; }
+
+  /* scoreboard header */
+  .board {
+    background: linear-gradient(180deg, #10171c, #0c1216);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 15px 10px;
+  }
+  .score-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .team { display: flex; align-items: center; gap: 9px; }
+  .dot-bat { width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+  .dot-bat.on { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+  .team-name { font-family: var(--display); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; font-size: 17px; color: var(--chalk); }
+  .runs { font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+
+  .strip { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+  .inning { font-family: var(--display); letter-spacing: .08em; text-transform: uppercase; font-size: 14px; color: var(--amber); font-weight: 600; }
+  .outs { display: flex; align-items: center; gap: 7px; }
+  .outs .lbl { font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  .out-dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--dim); }
+  .out-dot.on { background: var(--red); border-color: var(--red); }
+
+  /* count + diamond */
+  .mid { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 2px 2px; }
+  .count { text-align: center; flex: 0 0 auto; }
+  .count .lbl { font-size: 10px; letter-spacing: .18em; color: var(--dim); text-transform: uppercase; }
+  .count .nums { font-family: var(--display); font-weight: 700; font-size: 46px; line-height: .95; font-variant-numeric: tabular-nums; }
+  .count .nums .sep { color: var(--dim); font-weight: 400; }
+  .diamond { flex: 0 0 116px; }
+
+  /* at-bat */
+  .atbat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+  .atbat .who { font-size: 10px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; }
+  .atbat .nm { font-family: var(--display); font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+  .pc { text-align: right; min-width: 96px; }
+  .pc .who { color: var(--dim); }
+  .pc .nm { font-size: 14px; font-family: var(--body); font-weight: 600; }
+  .pc-bar { height: 5px; background: var(--panel-2); border-radius: 99px; margin-top: 5px; overflow: hidden; }
+  .pc-bar > i { display: block; height: 100%; border-radius: 99px; background: var(--green); transition: width .2s, background .2s; }
+
+  /* buttons */
+  .pitches { display: flex; gap: 7px; margin-top: 12px; }
+  button { font-family: var(--body); cursor: pointer; color: var(--ink); }
+  .btn {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+    border-radius: 11px; min-height: 46px; font-size: 15px; font-weight: 600;
+    transition: transform .05s, background .15s, border-color .15s;
+  }
+  .btn:active { transform: scale(.96); }
+  .pitches .btn { flex: 1; }
+  .btn.ball { border-color: #2c4030; }
+  .btn.strike { border-color: #4a2f2c; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 7px; }
+  .grid .btn { min-height: 50px; font-size: 14px; font-weight: 600; }
+  .btn.hit { background: #15241b; border-color: var(--green-deep); }
+  .btn.out { background: #221619; border-color: #4a2f2c; }
+  .undo { width: 100%; margin-top: 9px; background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 42px; border-radius: 11px; font-weight: 600; font-size: 14px; }
+  .undo:disabled { opacity: .4; cursor: default; }
+
+  .br { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+  .br .lbl { font-size: 10px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase; margin-bottom: 1px; }
+  .brchip { display: flex; justify-content: space-between; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px 6px 11px; }
+  .brn { font-size: 13px; font-weight: 600; }
+  .brn i { font-style: normal; color: var(--dim); font-size: 11px; margin-left: 5px; letter-spacing: .04em; }
+  .bract { display: flex; gap: 6px; }
+  .mini { border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 0 13px; min-height: 34px; transition: transform .05s; }
+  .mini.cs { border-color: #4a2f2c; color: #e9a59e; }
+  .mini:active { transform: scale(.95); }
+
+  /* log */
+  .sec-h { font-size: 10px; letter-spacing: .16em; color: var(--dim); text-transform: uppercase; margin: 16px 0 7px; display: flex; justify-content: space-between; align-items: center; }
+  .sec-h button { background: none; border: none; color: var(--amber); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; cursor: pointer; }
+  .log { display: flex; flex-direction: column; gap: 5px; max-height: 168px; overflow-y: auto; }
+  .log .ln { display: flex; gap: 9px; font-size: 13px; }
+  .log .tg { color: var(--amber-deep); min-width: 26px; font-family: var(--mono); font-size: 11px; padding-top: 1px; }
+  .log .tx { color: var(--chalk); }
+  .empty { color: var(--dim); font-size: 13px; font-style: italic; padding: 6px 0; }
+
+  /* export drawer */
+  .drawer { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; display: none; }
+  .drawer.open { display: block; }
+  .drawer .row { display: flex; gap: 7px; margin-bottom: 9px; }
+  .drawer .row .btn { flex: 1; min-height: 40px; font-size: 13px; }
+  pre.json { background: #0a0f12; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-family: var(--mono); font-size: 10.5px; color: #b7c6c2; max-height: 200px; overflow: auto; margin: 0; white-space: pre; }
+  .hint { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="board">
+    <div class="score-row">
+      <div class="team"><span class="dot-bat" id="batAway"></span><span class="team-name" id="nameAway">Mustangs</span></div>
+      <span class="runs" id="scoreAway">0</span>
+    </div>
+    <div class="score-row">
+      <div class="team"><span class="dot-bat" id="batHome"></span><span class="team-name" id="nameHome">Hawks</span></div>
+      <span class="runs" id="scoreHome">0</span>
+    </div>
+    <div class="strip">
+      <span class="inning" id="inning">▲ Top 1st</span>
+      <div class="outs"><span class="lbl">Outs</span><span class="out-dot" data-o="0"></span><span class="out-dot" data-o="1"></span><span class="out-dot" data-o="2"></span></div>
+    </div>
+  </div>
+
+  <div class="pad">
+    <div class="mid">
+      <div class="count">
+        <div class="lbl">Count</div>
+        <div class="nums"><span id="balls">0</span><span class="sep">–</span><span id="strikes">0</span></div>
+      </div>
+      <svg class="diamond" id="diamond" viewBox="0 0 120 120" aria-label="bases"></svg>
+    </div>
+
+    <div class="atbat">
+      <div>
+        <div class="who">At bat · <span id="batterMeta">#1 SS</span></div>
+        <div class="nm" id="batterName">—</div>
+      </div>
+      <div class="pc">
+        <div class="who">Pitcher · <span id="pitcherName">—</span></div>
+        <div class="nm"><span id="pitchCount">0</span> <span style="font-size:11px;color:var(--dim)">/ 85 P</span></div>
+        <div class="pc-bar"><i id="pcBar"></i></div>
+      </div>
+    </div>
+
+    <div class="pitches">
+      <button class="btn ball" data-pitch="ball">Ball</button>
+      <button class="btn strike" data-pitch="swinging_strike">Strike</button>
+      <button class="btn" data-pitch="foul">Foul</button>
+    </div>
+
+    <div class="br" id="br"></div>
+
+    <div class="grid">
+      <button class="btn hit" data-out="single">Single</button>
+      <button class="btn hit" data-out="double">Double</button>
+      <button class="btn hit" data-out="triple">Triple</button>
+      <button class="btn hit" data-out="home_run">Home run</button>
+      <button class="btn" data-out="walk">Walk</button>
+      <button class="btn out" data-out="strikeout">Strikeout</button>
+      <button class="btn out" data-out="groundout">Groundout</button>
+      <button class="btn out" data-out="flyout">Flyout</button>
+      <button class="btn out" data-out="fielders_choice">Fielder's ch.</button>
+      <button class="btn" data-out="reached_on_error">Reach on E</button>
+      <button class="btn out" data-out="sacrifice_fly">Sac fly</button>
+      <button class="btn out" data-out="double_play">Double play</button>
+    </div>
+
+    <button class="undo" id="undo" disabled>↩ Undo last play</button>
+
+    <div class="sec-h">Play-by-play <button id="toggleExport">Event log / export</button></div>
+    <div class="log" id="log"><div class="empty">No plays yet — start scoring.</div></div>
+
+    <div class="drawer" id="drawer">
+      <div class="row">
+        <button class="btn" id="copyJson">Copy JSON</button>
+        <button class="btn" id="downloadCsv">Download CSV</button>
+      </div>
+      <pre class="json" id="jsonView">[]</pre>
+      <div class="hint">This is the raw append-only event stream — the single source of truth. Everything above is derived from it by <span style="font-family:var(--mono)">reduce()</span>, and it exports cleanly because the data was never locked into a stats table.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ----- engine (ported verbatim from the TypeScript modules) ----- */
+function occupied(b){return [3,2,1].filter(x=>b[x]!==undefined);}
+function advanceAll(b,n,bat,bto){const m=[];for(const x of occupied(b)){const d=x+n;if(d>=4)m.push({id:b[x],from:x,to:"home",rbiTo:bat});else m.push({id:b[x],from:x,to:d});}if(bto==="home")m.push({id:bat,from:"batter",to:"home",rbiTo:bat});else m.push({id:bat,from:"batter",to:bto});return m;}
+function forceWalk(b,bat){const m=[{id:bat,from:"batter",to:1}];if(b[1]===undefined)return m;if(b[2]===undefined){m.push({id:b[1],from:1,to:2});return m;}if(b[3]===undefined){m.push({id:b[2],from:2,to:3});m.push({id:b[1],from:1,to:2});return m;}m.push({id:b[3],from:3,to:"home",rbiTo:bat});m.push({id:b[2],from:2,to:3});m.push({id:b[1],from:1,to:2});return m;}
+function defaultRunnerMoves(o,b,bat){switch(o){
+  case"single":return advanceAll(b,1,bat,1);
+  case"double":return advanceAll(b,2,bat,2);
+  case"triple":return advanceAll(b,3,bat,3);
+  case"home_run":return advanceAll(b,4,bat,"home");
+  case"walk":case"intentional_walk":case"hit_by_pitch":return forceWalk(b,bat);
+  case"strikeout":return [{id:bat,from:"batter",to:"out",outBy:["C"]}];
+  case"groundout":case"flyout":case"lineout":case"popout":return [{id:bat,from:"batter",to:"out"}];
+  case"sacrifice_fly":{const m=[{id:bat,from:"batter",to:"out"}];if(b[3]!==undefined)m.push({id:b[3],from:3,to:"home",rbiTo:bat});return m;}
+  case"sacrifice_bunt":{const m=[{id:bat,from:"batter",to:"out"}];for(const x of occupied(b)){const d=x+1;if(d>=4)m.push({id:b[x],from:x,to:"home"});else m.push({id:b[x],from:x,to:d});}return m;}
+  case"fielders_choice":{const m=[{id:bat,from:"batter",to:1}];const l=[1,2,3].reverse().find(x=>b[x]!==undefined);if(l!==undefined)m.push({id:b[l],from:l,to:"out",outBy:["SS"]});return m;}
+  case"reached_on_error":return [{id:bat,from:"batter",to:1,onError:true},...occupied(b).map(x=>{const d=x+1;return d>=4?{id:b[x],from:x,to:"home",onError:true}:{id:b[x],from:x,to:d};})];
+  case"double_play":{const m=[{id:bat,from:"batter",to:"out",outBy:["1B"]}];const l=[1,2,3].find(x=>b[x]!==undefined);if(l!==undefined)m.push({id:b[l],from:l,to:"out",outBy:["SS","2B"]});return m;}
+  case"triple_play":{const m=[{id:bat,from:"batter",to:"out"}];for(const x of occupied(b).slice(0,2))m.push({id:b[x],from:x,to:"out"});return m;}
+  default:return [{id:bat,from:"batter",to:"out"}];
+}}
+function pitcherOfLineup(s){const p=s.find(x=>x.position==="P");return p?p.playerId:s[0].playerId;}
+function initLineupState(su){return {away:su.away.battingOrder.map(s=>({...s})),home:su.home.battingOrder.map(s=>({...s}))};}
+function initialState(su){return {inning:1,half:"top",outs:0,count:{balls:0,strikes:0},bases:{},score:{away:0,home:0},battingTeam:"away",order:{away:0,home:0},pitcher:{away:pitcherOfLineup(su.away.battingOrder),home:pitcherOfLineup(su.home.battingOrder)},pitchCount:{},lineup:initLineupState(su)};}
+function clone(s){return {...s,count:{...s.count},bases:{...s.bases},score:{...s.score},order:{...s.order},pitcher:{...s.pitcher},pitchCount:{...s.pitchCount},lineup:{away:s.lineup.away.map(x=>({...x})),home:s.lineup.home.map(x=>({...x}))}};}
+function fieldingSide(bt){return bt==="away"?"home":"away";}
+function endHalfInning(s){const n=clone(s);n.outs=0;n.bases={};n.count={balls:0,strikes:0};if(s.half==="top"){n.half="bottom";n.battingTeam="home";}else{n.half="top";n.battingTeam="away";n.inning=s.inning+1;}return n;}
+function advanceBatter(s){const n=clone(s);const sd=s.battingTeam;n.order[sd]=(s.order[sd]+1)%s.lineup[sd].length;return n;}
+function applyPitch(s,e){const n=clone(s);n.pitchCount[e.pitcher]=(n.pitchCount[e.pitcher]||0)+1;let {balls,strikes}=n.count;switch(e.result){case"ball":balls++;break;case"called_strike":case"swinging_strike":case"foul_tip":strikes++;break;case"foul":strikes=Math.min(strikes+1,2);break;}n.count={balls,strikes};return n;}
+function applyRunnerMoves(s,mv){const n=clone(s);for(const m of mv){if(m.from!=="batter")delete n.bases[m.from];}let r=0;for(const m of mv){if(m.to==="home")r++;else if(m.to==="out")n.outs++;else n.bases[m.to]=m.id;}n.score[s.battingTeam]+=r;return n;}
+function applyPaResult(s,e){const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);let n=applyRunnerMoves(s,mv);n.count={balls:0,strikes:0};n=advanceBatter(n);if(n.outs>=3)n=endHalfInning(n);return n;}
+function applyBaserunning(s,e){let n=applyRunnerMoves(s,e.runners);if(n.outs>=3)n=endHalfInning(n);return n;}
+function applySub(s,e){const n=clone(s);const o=n.lineup[e.team];o[e.slot]={playerId:e.playerIn,position:e.position||(o[e.slot]&&o[e.slot].position)||"DH"};if(e.kind==="pitching"||e.position==="P")n.pitcher[e.team]=e.playerIn;return n;}
+function apply(s,e){switch(e.type){case"pitch":return applyPitch(s,e);case"pa_result":return applyPaResult(s,e);case"baserunning":return applyBaserunning(s,e);case"substitution":return applySub(s,e);default:return s;}}
+function reduce(su,ev){return [...ev].sort((a,b)=>a.seq-b.seq).reduce(apply,initialState(su));}
+function currentBatter(s){const sd=s.battingTeam;return s.lineup[sd][s.order[sd]%s.lineup[sd].length].playerId;}
+function currentPitcher(s){return s.pitcher[fieldingSide(s.battingTeam)];}
+const PA_VERB={single:"singles",double:"doubles",triple:"triples",home_run:"homers",walk:"walks",intentional_walk:"walks (IBB)",hit_by_pitch:"hit by pitch",strikeout:"strikes out",groundout:"grounds out",flyout:"flies out",lineout:"lines out",popout:"pops out",fielders_choice:"reaches on fielder's choice",reached_on_error:"reaches on error",sacrifice_fly:"sac fly",sacrifice_bunt:"sac bunt",double_play:"into a double play",triple_play:"into a triple play"};
+function baseName(b){return b===2?"second":b===3?"third":b==="home"?"home":"first";}
+const BR_VERB={stolen_base:"steals",caught_stealing:"caught stealing",wild_pitch:"wild pitch",passed_ball:"passed ball",balk:"balk",pickoff:"picked off",other:"advances"};
+function playLog(su,ev,nameOf){let s=initialState(su);const out=[];for(const e of [...ev].sort((a,b)=>a.seq-b.seq)){const tag=(s.half==="top"?"T":"B")+s.inning;
+  if(e.type==="pa_result"){const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);const r=mv.filter(m=>m.to==="home").length;let t=nameOf(e.batter)+" "+(PA_VERB[e.outcome]||e.outcome);if(r>0)t+=" \u2014 "+r+" run"+(r>1?"s":"");out.push({tag,tx:t});}
+  else if(e.type==="baserunning"){const m=e.runners[0];const r=e.runners.filter(x=>x.to==="home").length;let t=nameOf(m.id)+" "+(BR_VERB[e.kind]||"advances");if(e.kind==="stolen_base"&&m.to!=="out")t+=" "+baseName(m.to);if(r>0)t+=" \u2014 "+r+" run"+(r>1?"s":"");out.push({tag,tx:t});}
+  s=apply(s,e);}return out.reverse();}
+
+/* ----- setup (one game; the scorer's roster is hardcoded for now) ----- */
+const NAMES={};
+function L(playerId,position,name){NAMES[playerId]=name;return {playerId,position};}
+const setup={
+  away:{teamId:"Mustangs",battingOrder:[
+    L("m1","SS","Avery P."),L("m2","CF","Mason T."),L("m3","1B","Diego R."),
+    L("m4","C","Liam K."),L("m5","3B","Noah B."),L("m6","2B","Eli W."),
+    L("m7","RF","Caleb M."),L("m8","LF","Owen S."),L("m9","P","Jack D.")]},
+  home:{teamId:"Hawks",battingOrder:[
+    L("h1","SS","Tyler M."),L("h2","CF","Sam K."),L("h3","1B","Marcus D."),
+    L("h4","C","Cole R."),L("h5","3B","Drew L."),L("h6","2B","Ben A."),
+    L("h7","RF","Luca P."),L("h8","LF","Ivan G."),L("h9","P","Reese T.")]},
+};
+function nameOf(id){return NAMES[id]||id;}
+function posOf(state,id){const all=[...state.lineup.away,...state.lineup.home];const s=all.find(x=>x.playerId===id);return s?s.position:"";}
+const DAILY_MAX=85;
+
+/* ----- UI state: a stack of actions, each a group of events (one-tap = one-undo) ----- */
+let actions=[];
+let seq=1;
+const NO_PITCH=new Set(["walk","strikeout"]); // these come without an extra contact pitch
+const flat=()=>actions.flatMap(a=>a.events);
+
+function pushAction(events){actions.push({events});render();}
+
+function doPitch(result){
+  const before=reduce(setup,flat());
+  const p=currentPitcher(before);
+  const evs=[{seq:seq++,type:"pitch",pitcher:p,result}];
+  const after=reduce(setup,[...flat(),evs[0]]);
+  const b=currentBatter(before);
+  if(after.count.balls>=4) evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome:"walk"});
+  else if(after.count.strikes>=3) evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome:"strikeout"});
+  pushAction(evs);
+}
+function doOutcome(outcome){
+  const s=reduce(setup,flat());
+  const b=currentBatter(s), p=currentPitcher(s);
+  const evs=[];
+  if(!NO_PITCH.has(outcome)) evs.push({seq:seq++,type:"pitch",pitcher:p,result:"in_play"});
+  evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome});
+  pushAction(evs);
+}
+function undo(){actions.pop();render();}
+
+function doSteal(b){
+  const s=reduce(setup,flat()); const id=s.bases[b]; if(!id)return;
+  const to=b===3?"home":b+1;
+  pushAction([{seq:seq++,type:"baserunning",kind:"stolen_base",pitcher:currentPitcher(s),runners:[{id,from:b,to}]}]);
+}
+function doCaught(b){
+  const s=reduce(setup,flat()); const id=s.bases[b]; if(!id)return;
+  pushAction([{seq:seq++,type:"baserunning",kind:"caught_stealing",pitcher:currentPitcher(s),runners:[{id,from:b,to:"out",outBy:["C","2B"]}]}]);
+}
+function renderBaserunning(s){
+  const wrap=document.getElementById("br");
+  const occ=[3,2,1].filter(b=>s.bases[b]!==undefined);
+  if(!occ.length){wrap.style.display="none";wrap.innerHTML="";return;}
+  wrap.style.display="";
+  const lbl=b=>b===1?"1st":b===2?"2nd":"3rd";
+  wrap.innerHTML='<div class="lbl">On base</div>'+occ.map(b=>
+    '<div class="brchip"><span class="brn">'+nameOf(s.bases[b])+' <i>'+lbl(b)+'</i></span>'+
+    '<span class="bract"><button class="mini" data-sb="'+b+'">Steal</button><button class="mini cs" data-cs="'+b+'">Caught</button></span></div>'
+  ).join("");
+  wrap.querySelectorAll("[data-sb]").forEach(x=>x.addEventListener("click",()=>doSteal(+x.getAttribute("data-sb"))));
+  wrap.querySelectorAll("[data-cs]").forEach(x=>x.addEventListener("click",()=>doCaught(+x.getAttribute("data-cs"))));
+}
+
+const ORD=["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th"];
+function drawDiamond(bases){
+  const pts={1:{x:96,y:60},2:{x:60,y:24},3:{x:24,y:60}};
+  function sq(c,on){return '<rect x="'+(c.x-9)+'" y="'+(c.y-9)+'" width="18" height="18" rx="3" transform="rotate(45 '+c.x+' '+c.y+')" fill="'+(on?"var(--green)":"#0a0f12")+'" stroke="'+(on?"var(--green-deep)":"var(--line)")+'" stroke-width="1.5"/>';}
+  const lines='<path d="M60 96 L96 60 L60 24 L24 60 Z" fill="none" stroke="#22302b" stroke-width="1.5"/>';
+  const home='<rect x="53" y="89" width="14" height="14" transform="rotate(45 60 96)" fill="#0a0f12" stroke="var(--line)" stroke-width="1.5"/>';
+  return lines+sq(pts[2],bases[2]!==undefined)+sq(pts[1],bases[1]!==undefined)+sq(pts[3],bases[3]!==undefined)+home;
+}
+
+function render(){
+  const ev=flat();
+  const s=reduce(setup,ev);
+  document.getElementById("nameAway").textContent=setup.away.teamId;
+  document.getElementById("nameHome").textContent=setup.home.teamId;
+  document.getElementById("scoreAway").textContent=s.score.away;
+  document.getElementById("scoreHome").textContent=s.score.home;
+  document.getElementById("batAway").classList.toggle("on",s.battingTeam==="away");
+  document.getElementById("batHome").classList.toggle("on",s.battingTeam==="home");
+  document.getElementById("inning").textContent=(s.half==="top"?"▲ Top ":"▼ Bot ")+ORD[s.inning-1];
+  for(let i=0;i<3;i++)document.querySelector('[data-o="'+i+'"]').classList.toggle("on",i<s.outs);
+  document.getElementById("balls").textContent=s.count.balls;
+  document.getElementById("strikes").textContent=s.count.strikes;
+  document.getElementById("diamond").innerHTML=drawDiamond(s.bases);
+  renderBaserunning(s);
+
+  const bId=currentBatter(s), pId=currentPitcher(s);
+  const sd=s.battingTeam, slot=(s.order[sd]%s.lineup[sd].length)+1;
+  document.getElementById("batterName").textContent=nameOf(bId);
+  document.getElementById("batterMeta").textContent="#"+slot+" "+posOf(s,bId);
+  document.getElementById("pitcherName").textContent=nameOf(pId);
+  const pc=s.pitchCount[pId]||0;
+  document.getElementById("pitchCount").textContent=pc;
+  const bar=document.getElementById("pcBar");
+  bar.style.width=Math.min(pc/DAILY_MAX,1)*100+"%";
+  bar.style.background=pc>=DAILY_MAX?"var(--red)":pc>=70?"var(--amber)":"var(--green)";
+
+  const log=playLog(setup,ev,nameOf);
+  const el=document.getElementById("log");
+  el.innerHTML=log.length?log.map(l=>'<div class="ln"><span class="tg">'+l.tag+'</span><span class="tx">'+l.tx+'</span></div>').join(""):'<div class="empty">No plays yet — start scoring.</div>';
+
+  document.getElementById("undo").disabled=actions.length===0;
+  document.getElementById("jsonView").textContent=JSON.stringify(ev,null,1);
+}
+
+/* CSV export of the resolved plate appearances */
+function toCsv(){
+  let s=initialState(setup);
+  const rows=[["seq","inning","half","batter","pitcher","outcome","runs"]];
+  for(const e of flat()){
+    if(e.type==="pa_result"){
+      const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);
+      const runs=mv.filter(m=>m.to==="home").length;
+      rows.push([e.seq,s.inning,s.half,nameOf(e.batter),nameOf(e.pitcher),e.outcome,runs]);
+    }
+    s=apply(s,e);
+  }
+  return rows.map(r=>r.join(",")).join("\n");
+}
+
+/* wire up */
+document.querySelectorAll("[data-pitch]").forEach(b=>b.addEventListener("click",()=>doPitch(b.getAttribute("data-pitch"))));
+document.querySelectorAll("[data-out]").forEach(b=>b.addEventListener("click",()=>doOutcome(b.getAttribute("data-out"))));
+document.getElementById("undo").addEventListener("click",undo);
+document.getElementById("toggleExport").addEventListener("click",()=>document.getElementById("drawer").classList.toggle("open"));
+document.getElementById("copyJson").addEventListener("click",()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(flat(),null,2));});
+document.getElementById("downloadCsv").addEventListener("click",()=>{
+  const blob=new Blob([toCsv()],{type:"text/csv"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="game.csv";a.click();URL.revokeObjectURL(a.href);
+});
+render();
+</script>
+</body>
+</html>

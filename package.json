@@ -1,0 +1,18 @@
+{
+  "name": "baseball-scoring-engine",
+  "version": "0.1.0",
+  "description": "Event-sourced scoring engine for baseball: a pure reducer over an append-only event log, with stat projections and youth pitch-count rules.",
+  "license": "MIT",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node dist/tests/run.js && node dist/tests/retrosheet.test.js && node dist/tests/decisions.test.js && node dist/tests/sync.test.js",
+    "test:server": "tsc && node dist/tests/server.test.js",
+    "serve": "tsc && node dist/src/server.js"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^5.4.5"
+  }
+}
