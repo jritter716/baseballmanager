@@ -169,7 +169,9 @@ The server assigns the authoritative `seq` on append; `reduce` orders by `seq`.
 - **Live scoring UI** — pitches/outcomes emit real events; count, outs, bases,
   score, pitch-count bar, and play-by-play all read from `reduce`; undo pops the
   last action and re-folds; on-base panel records steals/caught-stealing; export
-  drawer shows the raw event stream + CSV/JSON.
+  drawer shows the raw event stream + CSV/JSON. **Runner-advancement override**
+  ("Adjust runners" sheet) lets the scorer correct non-routine baserunning while
+  routine plays stay one tap.
 
 ---
 
@@ -189,10 +191,11 @@ These are intentional and documented in code/README, not oversights:
 - **Win/L/S judgment clauses** — starter-under-5 reassignment picks the most-used
   reliever; the save "3 effective innings" / "tying run on deck" clauses are
   approximated. The ≤3-run-lead + 1-inning save clause is exact.
-- **Runner-advancement override UI is not built** — the live app uses default
-  movements, so non-routine plays (extra base taken, runner thrown out, the
-  specific fielder on an error, double steals) aren't fully precise yet. This is
-  the single most-referenced gap; it's the next fidelity step.
+- **Runner-advancement override UI — built (Phase 2).** The scorer can adjust
+  where each runner ends up (hold/advance/score/out) and flag errors, via the
+  "Adjust runners" sheet (`src/runners.ts` + UI). Remaining minor approximation:
+  overridden outs don't capture the specific fielder (`outBy`), so PO/A on those
+  plays isn't credited; double steals are still entered as individual steals.
 - **Sync is single-writer-friendly** — idempotent dedup covers the one-scorer
   case; true multi-writer conflict resolution would need more.
 - **Undo only removes un-synced events** — once an event is acknowledged by the
@@ -229,9 +232,10 @@ Server endpoints: `POST /games`, `POST /games/:id/events`,
 
 ## Roadmap (suggested order)
 
-1. **Runner-advancement override UI.** The fidelity gap that matters most. Let the
-   scorer adjust where each runner ended on non-routine plays, and pick the
-   fielder/error. The engine already accepts explicit `runners` — this is UI.
+1. ~~**Runner-advancement override UI.**~~ **Done (Phase 2).** `src/runners.ts`
+   (`editableRunners`/`toRunnerMoves`) + an "Adjust runners" sheet in the scorer
+   let the scorer set each runner's destination and error flag; the event carries
+   explicit `runners` and rounds through sync + the follower.
 2. ~~**Wire the scorer to the backend.**~~ **Done (Phase 1).** Offline-first queue
    in `web/sync-client.js`; POSTs to `/games/:id/events`, reconciles via `sync.ts`.
 3. ~~**Follower web view.**~~ **Done (Phase 1).** `web/follower.html` — SSE stream,
