@@ -1,4 +1,6 @@
 import http from "http";
+import fs from "fs";
+import path from "path";
 import { GameStore } from "./store";
 import { EventEnvelope } from "./sync";
 import { apply, initialState } from "./reducer";
@@ -44,6 +46,45 @@ function csvExport(id: string): string {
     s = apply(s, e as GameEvent);
   }
   return rows.join("\n");
+}
+
+// --- static file serving (the PWA app shell, served same-origin as the API) ---
+
+const STATIC_DIR =
+  process.env.STATIC_DIR || path.join(__dirname, "..", "..", "web");
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+};
+
+/** Serve a file from STATIC_DIR. Returns true if it handled the response. */
+async function serveStatic(pathname: string, res: http.ServerResponse): Promise<boolean> {
+  const rel = pathname === "/" ? "scoring-app.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+  const filePath = path.resolve(STATIC_DIR, rel);
+  // Path-traversal guard: the resolved path must stay inside STATIC_DIR.
+  if (filePath !== STATIC_DIR && !filePath.startsWith(STATIC_DIR + path.sep)) return false;
+  try {
+    const data = await fs.promises.readFile(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const headers: Record<string, string> = {
+      "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream",
+    };
+    // The service worker and HTML must not be served stale, or updates won't land.
+    if (ext === ".html" || rel === "sw.js") headers["Cache-Control"] = "no-cache";
+    res.writeHead(200, headers);
+    res.end(data);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function cors(res: http.ServerResponse) {
@@ -139,6 +180,9 @@ export function startServer(port: number): http.Server {
           return;
         }
       }
+
+      // Fall through to the static app shell for any other GET.
+      if (method === "GET" && (await serveStatic(url.pathname, res))) return;
 
       json(res, 404, { error: "not found" });
     } catch (err: any) {

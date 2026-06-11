@@ -4,6 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Scorekeeper</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0b1014" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Scorekeeper" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -134,6 +140,17 @@
   .drawer .row .btn { flex: 1; min-height: 40px; font-size: 13px; }
   pre.json { background: #0a0f12; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-family: var(--mono); font-size: 10.5px; color: #b7c6c2; max-height: 200px; overflow: auto; margin: 0; white-space: pre; }
   .hint { font-size: 11px; color: var(--dim); margin-top: 8px; line-height: 1.5; }
+  .hint code { color: var(--chalk); font-family: var(--mono); }
+
+  /* sync / connection status */
+  .strip-right { display: flex; align-items: center; gap: 14px; }
+  .sync { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .sync .led { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); transition: background .2s, box-shadow .2s; }
+  .sync.online .led { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .sync.offline .led { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .sync.error .led { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px); background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); padding: 9px 15px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -149,7 +166,10 @@
     </div>
     <div class="strip">
       <span class="inning" id="inning">▲ Top 1st</span>
-      <div class="outs"><span class="lbl">Outs</span><span class="out-dot" data-o="0"></span><span class="out-dot" data-o="1"></span><span class="out-dot" data-o="2"></span></div>
+      <div class="strip-right">
+        <span class="sync" id="sync" title="connection &amp; sync status"><i class="led"></i><span id="syncText">…</span></span>
+        <div class="outs"><span class="lbl">Outs</span><span class="out-dot" data-o="0"></span><span class="out-dot" data-o="1"></span><span class="out-dot" data-o="2"></span></div>
+      </div>
     </div>
   </div>
 
@@ -209,33 +229,34 @@
       </div>
       <pre class="json" id="jsonView">[]</pre>
       <div class="hint">This is the raw append-only event stream — the single source of truth. Everything above is derived from it by <span style="font-family:var(--mono)">reduce()</span>, and it exports cleanly because the data was never locked into a stats table.</div>
+      <div class="hint" id="followInfo">Not yet synced to server.</div>
     </div>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 
 <script type="module">
-/* ----- engine: the single compiled source of truth -----
-   Bundled from src/client.ts (the TypeScript engine) by `npm run build:web`.
-   No engine logic lives in this page anymore — only UI and the thin
-   presentation helpers below, which call the imported functions. */
+/* ----- engine + presentation: the single compiled source of truth -----
+   Engine bundled from src/client.ts; play-by-play formatting is shared with the
+   live follower view via playlog.js. No engine logic lives in this page. */
 import {
   reduce, apply, initialState,
   currentBatter, currentPitcher,
   defaultRunnerMoves,
 } from "./dist/engine.js";
 
-/* ----- play-by-play text (UI-only presentation, built on the imported engine) ----- */
-const PA_VERB={single:"singles",double:"doubles",triple:"triples",home_run:"homers",walk:"walks",intentional_walk:"walks (IBB)",hit_by_pitch:"hit by pitch",strikeout:"strikes out",groundout:"grounds out",flyout:"flies out",lineout:"lines out",popout:"pops out",fielders_choice:"reaches on fielder's choice",reached_on_error:"reaches on error",sacrifice_fly:"sac fly",sacrifice_bunt:"sac bunt",double_play:"into a double play",triple_play:"into a triple play"};
-function baseName(b){return b===2?"second":b===3?"third":b==="home"?"home":"first";}
-const BR_VERB={stolen_base:"steals",caught_stealing:"caught stealing",wild_pitch:"wild pitch",passed_ball:"passed ball",balk:"balk",pickoff:"picked off",other:"advances"};
-function playLog(su,ev,nameOf){let s=initialState(su);const out=[];for(const e of [...ev].sort((a,b)=>a.seq-b.seq)){const tag=(s.half==="top"?"T":"B")+s.inning;
-  if(e.type==="pa_result"){const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);const r=mv.filter(m=>m.to==="home").length;let t=nameOf(e.batter)+" "+(PA_VERB[e.outcome]||e.outcome);if(r>0)t+=" \u2014 "+r+" run"+(r>1?"s":"");out.push({tag,tx:t});}
-  else if(e.type==="baserunning"){const m=e.runners[0];const r=e.runners.filter(x=>x.to==="home").length;let t=nameOf(m.id)+" "+(BR_VERB[e.kind]||"advances");if(e.kind==="stolen_base"&&m.to!=="out")t+=" "+baseName(m.to);if(r>0)t+=" \u2014 "+r+" run"+(r>1?"s":"");out.push({tag,tx:t});}
-  s=apply(s,e);}return out.reverse();}
+import { playLog } from "./playlog.js";
+import { createSyncClient, browserStorage } from "./sync-client.js";
+
+/* Register the service worker for installability + offline launch. */
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+/* The backend + offline queue work same-origin by default; override with ?api=URL. */
+const API_BASE = new URLSearchParams(location.search).get("api") || "";
 
 /* ----- setup (one game; the scorer's roster is hardcoded for now) ----- */
 const NAMES={};
-function L(playerId,position,name){NAMES[playerId]=name;return {playerId,position};}
+function L(playerId,position,name){NAMES[playerId]=name;return {playerId,position,name};}
 const setup={
   away:{teamId:"Mustangs",battingOrder:[
     L("m1","SS","Avery P."),L("m2","CF","Mason T."),L("m3","1B","Diego R."),
@@ -250,42 +271,62 @@ function nameOf(id){return NAMES[id]||id;}
 function posOf(state,id){const all=[...state.lineup.away,...state.lineup.home];const s=all.find(x=>x.playerId===id);return s?s.position:"";}
 const DAILY_MAX=85;
 
-/* ----- UI state: a stack of actions, each a group of events (one-tap = one-undo) ----- */
-let actions=[];
-let seq=1;
-const NO_PITCH=new Set(["walk","strikeout"]); // these come without an extra contact pitch
-const flat=()=>actions.flatMap(a=>a.events);
-
-function pushAction(events){actions.push({events});render();}
+/* ----- offline-first log: every tap is applied locally, queued, and synced ----- */
+const NO_PITCH=new Set(["walk","strikeout"]); // walk/strikeout arrive without an extra contact pitch
+const TEMP=2e9; // sort key to apply a not-yet-committed pitch last when previewing the count
+const client=createSyncClient({
+  setup, baseUrl:API_BASE,
+  storage:browserStorage("scorekeeper:game"),
+  onChange:render, onStatus:renderStatus,
+});
+const log=()=>client.getLog();
 
 function doPitch(result){
-  const before=reduce(setup,flat());
-  const p=currentPitcher(before);
-  const evs=[{seq:seq++,type:"pitch",pitcher:p,result}];
-  const after=reduce(setup,[...flat(),evs[0]]);
-  const b=currentBatter(before);
-  if(after.count.balls>=4) evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome:"walk"});
-  else if(after.count.strikes>=3) evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome:"strikeout"});
-  pushAction(evs);
+  const before=reduce(setup,log());
+  const p=currentPitcher(before), b=currentBatter(before);
+  const pitch={type:"pitch",pitcher:p,result};
+  const after=reduce(setup,[...log(),{...pitch,seq:TEMP}]);
+  const evs=[pitch];
+  if(after.count.balls>=4) evs.push({type:"pa_result",batter:b,pitcher:p,outcome:"walk"});
+  else if(after.count.strikes>=3) evs.push({type:"pa_result",batter:b,pitcher:p,outcome:"strikeout"});
+  client.commit(evs);
 }
 function doOutcome(outcome){
-  const s=reduce(setup,flat());
+  const s=reduce(setup,log());
   const b=currentBatter(s), p=currentPitcher(s);
   const evs=[];
-  if(!NO_PITCH.has(outcome)) evs.push({seq:seq++,type:"pitch",pitcher:p,result:"in_play"});
-  evs.push({seq:seq++,type:"pa_result",batter:b,pitcher:p,outcome});
-  pushAction(evs);
+  if(!NO_PITCH.has(outcome)) evs.push({type:"pitch",pitcher:p,result:"in_play"});
+  evs.push({type:"pa_result",batter:b,pitcher:p,outcome});
+  client.commit(evs);
 }
-function undo(){actions.pop();render();}
+function undo(){ if(!client.undo()) flash("Already synced to the server — can't undo"); }
 
 function doSteal(b){
-  const s=reduce(setup,flat()); const id=s.bases[b]; if(!id)return;
+  const s=reduce(setup,log()); const id=s.bases[b]; if(!id)return;
   const to=b===3?"home":b+1;
-  pushAction([{seq:seq++,type:"baserunning",kind:"stolen_base",pitcher:currentPitcher(s),runners:[{id,from:b,to}]}]);
+  client.commit([{type:"baserunning",kind:"stolen_base",pitcher:currentPitcher(s),runners:[{id,from:b,to}]}]);
 }
 function doCaught(b){
-  const s=reduce(setup,flat()); const id=s.bases[b]; if(!id)return;
-  pushAction([{seq:seq++,type:"baserunning",kind:"caught_stealing",pitcher:currentPitcher(s),runners:[{id,from:b,to:"out",outBy:["C","2B"]}]}]);
+  const s=reduce(setup,log()); const id=s.bases[b]; if(!id)return;
+  client.commit([{type:"baserunning",kind:"caught_stealing",pitcher:currentPitcher(s),runners:[{id,from:b,to:"out",outBy:["C","2B"]}]}]);
+}
+
+let toastT;
+function flash(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),1800);}
+
+function renderStatus(st){
+  const el=document.getElementById("sync"), txt=document.getElementById("syncText");
+  let cls,label;
+  if(!st.online){cls="offline";label="Offline";}
+  else if(st.lastError){cls="error";label="Retrying";}
+  else {cls="online";label="Live";}
+  if(st.pending>0) label+=" · "+st.pending+" queued";
+  el.className="sync "+cls; txt.textContent=label;
+  const fi=document.getElementById("followInfo");
+  if(st.gameId){
+    const url="follower.html?game="+encodeURIComponent(st.gameId)+(API_BASE?("&api="+encodeURIComponent(API_BASE)):"");
+    fi.innerHTML='Live game <code>'+st.gameId.slice(0,8)+'</code> · <a href="'+url+'" target="_blank" rel="noopener" style="color:var(--amber)">Open follower view ↗</a>';
+  } else fi.textContent="Not yet synced to server (scoring locally).";
 }
 function renderBaserunning(s){
   const wrap=document.getElementById("br");
@@ -311,7 +352,7 @@ function drawDiamond(bases){
 }
 
 function render(){
-  const ev=flat();
+  const ev=log();
   const s=reduce(setup,ev);
   document.getElementById("nameAway").textContent=setup.away.teamId;
   document.getElementById("nameHome").textContent=setup.home.teamId;
@@ -337,11 +378,11 @@ function render(){
   bar.style.width=Math.min(pc/DAILY_MAX,1)*100+"%";
   bar.style.background=pc>=DAILY_MAX?"var(--red)":pc>=70?"var(--amber)":"var(--green)";
 
-  const log=playLog(setup,ev,nameOf);
+  const plays=playLog(setup,ev,nameOf);
   const el=document.getElementById("log");
-  el.innerHTML=log.length?log.map(l=>'<div class="ln"><span class="tg">'+l.tag+'</span><span class="tx">'+l.tx+'</span></div>').join(""):'<div class="empty">No plays yet — start scoring.</div>';
+  el.innerHTML=plays.length?plays.map(l=>'<div class="ln"><span class="tg">'+l.tag+'</span><span class="tx">'+l.tx+'</span></div>').join(""):'<div class="empty">No plays yet — start scoring.</div>';
 
-  document.getElementById("undo").disabled=actions.length===0;
+  document.getElementById("undo").disabled=ev.length===0;
   document.getElementById("jsonView").textContent=JSON.stringify(ev,null,1);
 }
 
@@ -349,7 +390,7 @@ function render(){
 function toCsv(){
   let s=initialState(setup);
   const rows=[["seq","inning","half","batter","pitcher","outcome","runs"]];
-  for(const e of flat()){
+  for(const e of log()){
     if(e.type==="pa_result"){
       const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);
       const runs=mv.filter(m=>m.to==="home").length;
@@ -365,12 +406,14 @@ document.querySelectorAll("[data-pitch]").forEach(b=>b.addEventListener("click",
 document.querySelectorAll("[data-out]").forEach(b=>b.addEventListener("click",()=>doOutcome(b.getAttribute("data-out"))));
 document.getElementById("undo").addEventListener("click",undo);
 document.getElementById("toggleExport").addEventListener("click",()=>document.getElementById("drawer").classList.toggle("open"));
-document.getElementById("copyJson").addEventListener("click",()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(flat(),null,2));});
+document.getElementById("copyJson").addEventListener("click",()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(log(),null,2));});
 document.getElementById("downloadCsv").addEventListener("click",()=>{
   const blob=new Blob([toCsv()],{type:"text/csv"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="game.csv";a.click();URL.revokeObjectURL(a.href);
 });
-render();
+
+/* Boot: load the persisted log, render immediately (offline-first), then sync. */
+client.init();
 </script>
 </body>
 </html>
