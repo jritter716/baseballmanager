@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>New game · Scorekeeper</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0b1014" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0b1014; --panel:#141c22; --panel-2:#1b242b; --line:#2a363f; --ink:#eef3f2; --muted:#8aa0a0; --dim:#5f7373; --amber:#f2a93b; --green:#3aa564; --green-deep:#1f6d40; --chalk:#d8e0dd; --display:"Saira Condensed",sans-serif; --body:"Hanken Grotesk",sans-serif; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; }
+  body{ font-family:var(--body); background:radial-gradient(120% 80% at 50% -10%, #16221d 0%, var(--bg) 55%), var(--bg); color:var(--ink); min-height:100vh; display:flex; justify-content:center; padding:18px 12px 48px; }
+  .wrap{ width:100%; max-width:420px; }
+  h1{ font-family:var(--display); letter-spacing:.08em; text-transform:uppercase; font-size:22px; margin:4px 0 14px; color:var(--chalk); }
+  h2{ font-family:var(--display); letter-spacing:.06em; text-transform:uppercase; font-size:14px; color:var(--amber); margin:18px 0 8px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  label{ font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); display:block; margin-bottom:4px; }
+  input,select{ font-family:var(--body); background:var(--panel-2); border:1px solid var(--line); color:var(--ink); border-radius:9px; padding:9px 10px; font-size:14px; width:100%; }
+  .team-name{ font-size:16px; font-weight:600; margin-bottom:10px; }
+  .row{ display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .row .jersey{ flex:0 0 46px; text-align:center; }
+  .row .nm{ flex:1; }
+  .row .pos{ flex:0 0 84px; }
+  .row .slot{ flex:0 0 18px; color:var(--dim); font-size:12px; text-align:center; }
+  button{ font-family:var(--body); cursor:pointer; color:var(--ink); }
+  .start{ width:100%; margin-top:18px; min-height:52px; border-radius:12px; border:1px solid var(--green-deep); background:#15241b; color:var(--ink); font-weight:700; font-size:16px; letter-spacing:.02em; }
+  .start:active{ transform:scale(.98); }
+  .err{ color:#e0584f; font-size:13px; margin-top:8px; min-height:16px; }
+  .games{ display:flex; flex-direction:column; gap:7px; }
+  .game{ display:flex; justify-content:space-between; align-items:center; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:9px 12px; text-decoration:none; color:var(--ink); }
+  .game .teams{ font-weight:600; font-size:14px; }
+  .game .meta{ font-size:11px; color:var(--dim); }
+  .muted{ color:var(--dim); font-size:13px; }
+  .seed{ background:none; border:none; color:var(--amber); font-size:12px; text-transform:uppercase; letter-spacing:.06em; font-weight:600; cursor:pointer; padding:0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚾ Scorekeeper</h1>
+
+  <h2>Resume a game</h2>
+  <div class="games" id="games"><div class="muted">Loading…</div></div>
+
+  <h2>New game</h2>
+  <div class="card">
+    <div class="row" style="gap:10px">
+      <div style="flex:1"><label>Away team</label><input id="awayName" placeholder="Away" autocomplete="off" /></div>
+      <div style="flex:1"><label>Home team</label><input id="homeName" placeholder="Home" autocomplete="off" /></div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px">
+      <label style="margin:0">Away lineup</label><button class="seed" data-seed="away">demo names</button>
+    </div>
+    <div id="awayLineup"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px">
+      <label style="margin:0">Home lineup</label><button class="seed" data-seed="home">demo names</button>
+    </div>
+    <div id="homeLineup"></div>
+
+    <button class="start" id="start">Start game ▸</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<script type="module">
+const API_BASE = new URLSearchParams(location.search).get("api") || "";
+const POSITIONS = ["P","C","1B","2B","3B","SS","LF","CF","RF","DH"];
+const DEFAULT_ORDER = ["SS","CF","1B","C","3B","2B","RF","LF","P"];
+const DEMO = {
+  away: ["Avery P.","Mason T.","Diego R.","Liam K.","Noah B.","Eli W.","Caleb M.","Owen S.","Jack D."],
+  home: ["Tyler M.","Sam K.","Marcus D.","Cole R.","Drew L.","Ben A.","Luca P.","Ivan G.","Reese T."],
+};
+
+function lineupRows(containerId){
+  const box = document.getElementById(containerId);
+  box.innerHTML = DEFAULT_ORDER.map((pos,i)=>
+    '<div class="row">'+
+      '<span class="slot">'+(i+1)+'</span>'+
+      '<input class="jersey" inputmode="numeric" placeholder="#" maxlength="2" />'+
+      '<input class="nm" placeholder="Player name" autocomplete="off" />'+
+      '<select class="pos">'+POSITIONS.map(p=>'<option'+(p===pos?" selected":"")+'>'+p+'</option>').join("")+'</select>'+
+    '</div>'
+  ).join("");
+  return box;
+}
+lineupRows("awayLineup"); lineupRows("homeLineup");
+
+document.querySelectorAll("[data-seed]").forEach(b=>b.addEventListener("click",()=>{
+  const side=b.getAttribute("data-seed");
+  const rows=document.querySelectorAll("#"+side+"Lineup .row");
+  DEMO[side].forEach((nm,i)=>{ if(rows[i]) rows[i].querySelector(".nm").value=nm; });
+  if(side==="away" && !document.getElementById("awayName").value) document.getElementById("awayName").value="Mustangs";
+  if(side==="home" && !document.getElementById("homeName").value) document.getElementById("homeName").value="Hawks";
+}));
+
+function readLineup(containerId, prefix){
+  const rows=[...document.querySelectorAll("#"+containerId+" .row")];
+  const order=[];
+  rows.forEach((r)=>{
+    const name=r.querySelector(".nm").value.trim();
+    if(!name) return;                         // skip empty rows
+    const jersey=r.querySelector(".jersey").value.trim();
+    const position=r.querySelector(".pos").value;
+    const slot={ playerId: prefix+(order.length+1), position, name };
+    if(jersey) slot.jersey=jersey;
+    order.push(slot);
+  });
+  return order;
+}
+
+async function loadGames(){
+  const box=document.getElementById("games");
+  try{
+    const r=await fetch(API_BASE+"/games");
+    const {games}=await r.json();
+    if(!games.length){ box.innerHTML='<div class="muted">No games yet — create one below.</div>'; return; }
+    box.innerHTML=games.slice().reverse().map(g=>{
+      const url="scoring-app.html?game="+encodeURIComponent(g.id)+(API_BASE?("&api="+encodeURIComponent(API_BASE)):"");
+      return '<a class="game" href="'+url+'"><span class="teams">'+esc(g.away)+' @ '+esc(g.home)+'</span><span class="meta">'+g.events+' events ›</span></a>';
+    }).join("");
+  }catch(e){ box.innerHTML='<div class="muted">Server offline — can\'t list games.</div>'; }
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+
+document.getElementById("start").addEventListener("click", async ()=>{
+  const err=document.getElementById("err"); err.textContent="";
+  const awayName=document.getElementById("awayName").value.trim();
+  const homeName=document.getElementById("homeName").value.trim();
+  const away=readLineup("awayLineup","a");
+  const home=readLineup("homeLineup","h");
+  if(!awayName||!homeName){ err.textContent="Enter both team names."; return; }
+  if(!away.length||!home.length){ err.textContent="Each team needs at least one player."; return; }
+  const setup={ away:{teamId:awayName, battingOrder:away}, home:{teamId:homeName, battingOrder:home} };
+  try{
+    const r=await fetch(API_BASE+"/games",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({setup})});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const {id}=await r.json();
+    location.href="scoring-app.html?game="+encodeURIComponent(id)+(API_BASE?("&api="+encodeURIComponent(API_BASE)):"");
+  }catch(e){ err.textContent="Couldn't create the game (server offline?)."; }
+});
+
+loadGames();
+</script>
+</body>
+</html>

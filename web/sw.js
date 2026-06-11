@@ -7,9 +7,10 @@
 //     scorer is offline these simply fail, and the page's offline queue holds
 //     the events until connectivity returns.
 //   - Cross-origin (web fonts): stale-while-revalidate.
-const VERSION = "scorekeeper-v1";
+const VERSION = "scorekeeper-v2";
 const SHELL = [
   "./",
+  "setup.html",
   "scoring-app.html",
   "follower.html",
   "dist/engine.js",
