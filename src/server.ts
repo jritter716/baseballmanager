@@ -67,7 +67,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 /** Serve a file from STATIC_DIR. Returns true if it handled the response. */
 async function serveStatic(pathname: string, res: http.ServerResponse): Promise<boolean> {
-  const rel = pathname === "/" ? "scoring-app.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+  const rel = pathname === "/" ? "setup.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
   const filePath = path.resolve(STATIC_DIR, rel);
   // Path-traversal guard: the resolved path must stay inside STATIC_DIR.
   if (filePath !== STATIC_DIR && !filePath.startsWith(STATIC_DIR + path.sep)) return false;
@@ -116,6 +116,11 @@ export function startServer(port: number, opts: { storeFile?: string } = {}): ht
       const method = req.method || "GET";
 
       if (method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
+
+      // GET /games  -> list games (for the picker)
+      if (method === "GET" && parts.length === 1 && parts[0] === "games") {
+        return json(res, 200, { games: store.list() });
+      }
 
       // POST /games  -> create
       if (method === "POST" && parts.length === 1 && parts[0] === "games") {

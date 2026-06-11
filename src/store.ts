@@ -113,6 +113,17 @@ export class GameStore {
     return this.games.get(id);
   }
 
+  /** Lightweight summaries of every game, for a game picker. */
+  list(): Array<{ id: string; away: string; home: string; events: number; serverSeq: number }> {
+    return [...this.games.values()].map((g) => ({
+      id: g.id,
+      away: g.setup.away.teamId,
+      home: g.setup.home.teamId,
+      events: g.events.length,
+      serverSeq: g.serverSeq,
+    }));
+  }
+
   /** Append events idempotently. Events already present (by id) are skipped.
    *  New events get a server-assigned monotonic `seq` (the authoritative order). */
   append(id: string, incoming: Array<GameEvent & { id?: string }>): EventEnvelope[] {

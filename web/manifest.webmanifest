@@ -2,7 +2,7 @@
   "name": "Scorekeeper — Baseball Scoring",
   "short_name": "Scorekeeper",
   "description": "Offline-first baseball scoring with live game-following and open data export.",
-  "start_url": "./scoring-app.html",
+  "start_url": "./setup.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

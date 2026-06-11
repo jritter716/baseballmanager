@@ -39,6 +39,7 @@ export function memoryStorage(seed = null) {
 export function createSyncClient(opts) {
   const {
     setup,
+    gameId: initialGameId = null,   // open an existing game instead of creating one
     baseUrl = "",
     storage = browserStorage(),
     fetchImpl = (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null),
@@ -53,7 +54,7 @@ export function createSyncClient(opts) {
   } = opts;
 
   // Persisted state.
-  let st = { gameId: null, log: [], groups: [], ackedIds: [], hwm: 0, seqCounter: 0 };
+  let st = { gameId: initialGameId, log: [], groups: [], ackedIds: [], hwm: 0, seqCounter: 0 };
   let acked = new Set();
   let manualOnline = null;     // tests / explicit offline toggle
   let lastError = null;

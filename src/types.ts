@@ -137,6 +137,8 @@ export interface LineupSlot {
   /** Optional display name. The engine ignores this; it travels with the setup
    *  so non-scorer clients (e.g. the live follower) can show readable names. */
   name?: string;
+  /** Optional jersey number (display only; the engine ignores it). */
+  jersey?: string;
 }
 
 export interface TeamLineup {
