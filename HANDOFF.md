@@ -102,6 +102,7 @@ baseball-engine/
 │   └── sync-client.test.mjs # offline queue + reconcile (drives the real store)
 ├── web/
 │   ├── scoring-app.html # live-scoring UI; offline-first, backend-wired PWA
+│   ├── setup.html       # game setup / roster screen + game picker (the landing page)
 │   ├── follower.html    # read-only live follower (SSE, gap-resume)
 │   ├── sync-client.js   # offline-first event queue + reconciliation glue
 │   ├── playlog.js       # shared play-by-play formatter (scorer + follower)
@@ -172,6 +173,11 @@ The server assigns the authoritative `seq` on append; `reduce` orders by `seq`.
   drawer shows the raw event stream + CSV/JSON. **Runner-advancement override**
   ("Adjust runners" sheet) lets the scorer correct non-routine baserunning while
   routine plays stay one tap.
+- **Game setup / roster (Phase 4)** — `setup.html` (the landing page) lists
+  existing games and creates new ones from custom team names + lineups (name,
+  optional jersey, position). The scorer opens a game by id; its setup is loaded
+  from the server (`GET /games`, `export.json`) and cached for offline reopen.
+  No roster is hardcoded.
 
 ---
 
