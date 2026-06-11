@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto";
+import fs from "fs";
+import path from "path";
 import { GameEvent, GameSetup, Base } from "./types";
 import { reduce } from "./reducer";
 import { stats, StatsResult } from "./stats";
@@ -34,12 +36,76 @@ export interface GameView {
  * maps directly onto an `events` table (one row per envelope) plus a `games`
  * table for setup. Swap the Map for your database and the rest is unchanged.
  */
+export interface GameStoreOptions {
+  /** Path to a JSONL append-only log. If set, games are persisted and recovered
+   *  on startup. If omitted, the store is purely in-memory (tests, ephemeral). */
+  file?: string;
+}
+
+/**
+ * Authoritative event store. By default in-memory; pass `{ file }` to make it
+ * durable. Durability uses an append-only JSONL log — one line per record, the
+ * exact event-sourced shape — fsync'd on append. On startup the log is re-folded
+ * to rebuild every game's state (and `seq`), so a restart loses nothing. JSONL
+ * keeps the engine's zero-runtime-dependency philosophy (no DB server, no ORM)
+ * and maps 1:1 onto the append-only model; recovery is just reading lines.
+ */
 export class GameStore {
   private games = new Map<string, GameRecord>();
+  private file: string | null;
+  private fd: number | null = null;
+
+  constructor(opts: GameStoreOptions = {}) {
+    this.file = opts.file ?? null;
+    if (this.file) this.load();
+  }
+
+  /** Recover all games by re-folding the persisted log. Tolerates a corrupt or
+   *  partially-written final line (a crash mid-append) by skipping bad lines. */
+  private load(): void {
+    if (!this.file || !fs.existsSync(this.file)) return;
+    const lines = fs.readFileSync(this.file, "utf8").split("\n");
+    let skipped = 0;
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let rec: any;
+      try { rec = JSON.parse(line); } catch { skipped++; continue; }
+      if (rec.k === "game") {
+        if (!this.games.has(rec.id)) {
+          this.games.set(rec.id, { id: rec.id, setup: rec.setup, events: [], serverSeq: 0 });
+        }
+      } else if (rec.k === "event") {
+        const g = this.games.get(rec.gameId);
+        if (!g) { skipped++; continue; }
+        g.events.push(rec.event as EventEnvelope);
+        if (rec.event.seq > g.serverSeq) g.serverSeq = rec.event.seq;
+      }
+    }
+    if (skipped) {
+      // eslint-disable-next-line no-console
+      console.warn(`GameStore: skipped ${skipped} unreadable log line(s) during recovery`);
+    }
+  }
+
+  private appendLine(obj: unknown): void {
+    if (!this.file) return;
+    if (this.fd === null) {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      this.fd = fs.openSync(this.file, "a"); // append mode
+    }
+    fs.writeSync(this.fd, JSON.stringify(obj) + "\n");
+    fs.fsyncSync(this.fd); // durable before we acknowledge
+  }
+
+  /** Flush + close the log file descriptor (call on graceful shutdown). */
+  close(): void {
+    if (this.fd !== null) { fs.fsyncSync(this.fd); fs.closeSync(this.fd); this.fd = null; }
+  }
 
   create(setup: GameSetup): GameRecord {
     const rec: GameRecord = { id: randomUUID(), setup, events: [], serverSeq: 0 };
     this.games.set(rec.id, rec);
+    this.appendLine({ k: "game", id: rec.id, setup });
     return rec;
   }
 
@@ -61,6 +127,7 @@ export class GameStore {
       seen.add(eid);
       appended.push(stored);
     }
+    for (const e of appended) this.appendLine({ k: "event", gameId: id, event: e });
     return appended;
   }
 
