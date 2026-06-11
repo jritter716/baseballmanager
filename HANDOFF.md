@@ -204,7 +204,10 @@ These are intentional and documented in code/README, not oversights:
   scorer can still undo freely while offline, where nothing is synced yet.
 - **No auth/accounts yet.** **COPPA** (data about minors) is deferred while the
   app serves one known team; revisit before any public signup.
-- **Store is in-memory** — swap for a real DB (one row per event envelope).
+- **Store durability (Phase 3)** — the server persists to an append-only JSONL
+  log (`STORE_FILE`, default `data/games.jsonl`), fsync'd on append, re-folded on
+  startup; games survive a restart. Still single-file/single-node; a real DB
+  would be the move for multi-node or large scale, but isn't needed yet.
 
 ---
 
@@ -242,8 +245,9 @@ Server endpoints: `POST /games`, `POST /games/:id/events`,
    `Last-Event-ID` resume, "last updated" freshness, graceful reconnect.
    (Also delivered in Phase 1: PWA manifest + service worker for installable,
    offline-launch use.)
-4. **Persist the store in a database.** Replace the in-memory Map; schema is one
-   `games` row (setup) + one `events` row per envelope (id, game_id, seq, json).
+4. ~~**Persist the store.**~~ **Done (Phase 3).** Append-only JSONL log
+   (`src/store.ts`, `STORE_FILE` env); fsync on append, re-fold on startup,
+   idempotent + partial-line-safe. A real DB is only needed for multi-node/scale.
 5. **Harden the Retrosheet parser** against downloaded `.EV*` files; widen rule
    coverage by replaying real seasons and fixing whatever throws. (Data is free
    but copyrighted — review terms before shipping it inside a product.)
