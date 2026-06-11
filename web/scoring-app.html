@@ -151,6 +151,26 @@
   .sync.error .led { background: var(--red); box-shadow: 0 0 8px var(--red); }
   .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px); background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); padding: 9px 15px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; box-shadow: 0 12px 30px -12px rgba(0,0,0,.8); }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* runner-advancement override */
+  .adjust-chip { width: 100%; margin-top: 9px; background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 40px; border-radius: 11px; font-weight: 600; font-size: 13px; letter-spacing: .02em; transition: background .15s, border-color .15s, color .15s; }
+  .adjust-chip.on { border-style: solid; border-color: var(--amber-deep); background: #221a0e; color: var(--amber); }
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: flex-end; justify-content: center; z-index: 30; }
+  .sheet.open { display: flex; }
+  .sheet-card { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px 18px 0 0; padding: 16px 15px 18px; max-height: 82vh; overflow: auto; }
+  .sheet-title { font-family: var(--display); font-size: 18px; font-weight: 600; letter-spacing: .02em; color: var(--chalk); text-transform: uppercase; margin-bottom: 12px; }
+  .mover { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 9px; }
+  .mover-h { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .mover-nm { font-weight: 600; font-size: 14px; }
+  .mover-from { font-size: 11px; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; flex: 1; }
+  .err { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--dim); font-weight: 700; font-size: 12px; }
+  .err.on { border-color: var(--red); color: var(--red); background: #221619; }
+  .dests { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dest { flex: 1; min-width: 52px; min-height: 40px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 9px; font-size: 13px; font-weight: 600; }
+  .dest.sel { border-color: var(--green-deep); background: #15241b; box-shadow: inset 0 0 0 1px var(--green-deep); }
+  .sheet-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .sheet-actions .btn { flex: 1; min-height: 46px; }
+  .sheet-actions .confirm { background: #15241b; border-color: var(--green-deep); }
 </style>
 </head>
 <body>
@@ -202,6 +222,8 @@
 
     <div class="br" id="br"></div>
 
+    <button class="adjust-chip" id="adjustChip"><span id="adjustLabel">⊕ Adjust runners</span></button>
+
     <div class="grid">
       <button class="btn hit" data-out="single">Single</button>
       <button class="btn hit" data-out="double">Double</button>
@@ -233,6 +255,16 @@
     </div>
   </div>
 </div>
+<div class="sheet" id="sheet">
+  <div class="sheet-card">
+    <div class="sheet-title" id="sheetTitle">Adjust runners</div>
+    <div class="sheet-body" id="sheetBody"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="sheetCancel">Cancel</button>
+      <button class="btn confirm" id="sheetConfirm">Confirm play</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -243,6 +275,7 @@ import {
   reduce, apply, initialState,
   currentBatter, currentPitcher,
   defaultRunnerMoves,
+  editableRunners, toRunnerMoves,
 } from "./dist/engine.js";
 
 import { playLog } from "./playlog.js";
@@ -292,14 +325,67 @@ function doPitch(result){
   client.commit(evs);
 }
 function doOutcome(outcome){
+  if(adjustMode){ openOverride(outcome); return; }   // adjust-runners armed -> open sheet
+  commitOutcome(outcome);                              // routine: one tap, engine defaults
+}
+function commitOutcome(outcome,runners){
   const s=reduce(setup,log());
   const b=currentBatter(s), p=currentPitcher(s);
   const evs=[];
   if(!NO_PITCH.has(outcome)) evs.push({type:"pitch",pitcher:p,result:"in_play"});
-  evs.push({type:"pa_result",batter:b,pitcher:p,outcome});
+  evs.push({type:"pa_result",batter:b,pitcher:p,outcome,...(runners?{runners}:{})});
   client.commit(evs);
 }
 function undo(){ if(!client.undo()) flash("Already synced to the server — can't undo"); }
+
+/* ----- runner-advancement override (default-and-override) ----- */
+let adjustMode=false;       // when armed, the next outcome opens the adjust sheet
+let pending=null;           // {outcome, batter, bases, edits} while the sheet is open
+const DEST_LBL={1:"1st",2:"2nd",3:"3rd",home:"Home",out:"Out"};
+const OUTCOME_LBL={single:"Single",double:"Double",triple:"Triple",home_run:"Home run",walk:"Walk",strikeout:"Strikeout",groundout:"Groundout",flyout:"Flyout",fielders_choice:"Fielder's choice",reached_on_error:"Reached on error",sacrifice_fly:"Sac fly",double_play:"Double play"};
+
+function toggleAdjust(){ adjustMode=!adjustMode; renderAdjustChip(); }
+function renderAdjustChip(){
+  const c=document.getElementById("adjustChip");
+  c.classList.toggle("on",adjustMode);
+  c.querySelector("#adjustLabel").textContent = adjustMode ? "Adjust runners: ON — pick the play" : "⊕ Adjust runners";
+}
+
+function openOverride(outcome){
+  const s=reduce(setup,log());
+  pending={ outcome, batter:currentBatter(s), bases:{...s.bases}, edits:editableRunners(outcome,s.bases,currentBatter(s)) };
+  document.getElementById("sheetTitle").textContent=(OUTCOME_LBL[outcome]||outcome)+" · adjust runners";
+  renderSheetBody();
+  document.getElementById("sheet").classList.add("open");
+}
+function renderSheetBody(){
+  const body=document.getElementById("sheetBody");
+  body.innerHTML=pending.edits.map((e,i)=>{
+    const where = e.from==="batter" ? "Batter" : "On "+DEST_LBL[e.from];
+    const opts = e.options.map(o=>{
+      const lbl = (e.from!=="batter" && o===e.from) ? "Hold" : DEST_LBL[o];
+      return '<button class="dest'+(o===e.to?" sel":"")+'" data-i="'+i+'" data-to="'+o+'">'+lbl+'</button>';
+    }).join("");
+    return '<div class="mover"><div class="mover-h"><span class="mover-nm">'+nameOf(e.id)+'</span>'+
+      '<span class="mover-from">'+where+'</span>'+
+      '<button class="err'+(e.onError?" on":"")+'" data-err="'+i+'" title="reached/advanced on an error">E</button></div>'+
+      '<div class="dests">'+opts+'</div></div>';
+  }).join("");
+  body.querySelectorAll(".dest").forEach(btn=>btn.addEventListener("click",()=>{
+    const i=+btn.getAttribute("data-i"); const to=btn.getAttribute("data-to");
+    pending.edits[i].to = (to==="home"||to==="out")?to:+to;
+    renderSheetBody();
+  }));
+  body.querySelectorAll(".err").forEach(btn=>btn.addEventListener("click",()=>{
+    const i=+btn.getAttribute("data-err"); pending.edits[i].onError=!pending.edits[i].onError; renderSheetBody();
+  }));
+}
+function confirmOverride(){
+  const runners=toRunnerMoves(pending.edits,pending.outcome,pending.batter,pending.bases);
+  commitOutcome(pending.outcome,runners);
+  closeSheet(); adjustMode=false; renderAdjustChip();
+}
+function closeSheet(){ document.getElementById("sheet").classList.remove("open"); pending=null; }
 
 function doSteal(b){
   const s=reduce(setup,log()); const id=s.bases[b]; if(!id)return;
@@ -405,6 +491,9 @@ function toCsv(){
 document.querySelectorAll("[data-pitch]").forEach(b=>b.addEventListener("click",()=>doPitch(b.getAttribute("data-pitch"))));
 document.querySelectorAll("[data-out]").forEach(b=>b.addEventListener("click",()=>doOutcome(b.getAttribute("data-out"))));
 document.getElementById("undo").addEventListener("click",undo);
+document.getElementById("adjustChip").addEventListener("click",toggleAdjust);
+document.getElementById("sheetCancel").addEventListener("click",closeSheet);
+document.getElementById("sheetConfirm").addEventListener("click",confirmOverride);
 document.getElementById("toggleExport").addEventListener("click",()=>document.getElementById("drawer").classList.toggle("open"));
 document.getElementById("copyJson").addEventListener("click",()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(log(),null,2));});
 document.getElementById("downloadCsv").addEventListener("click",()=>{
