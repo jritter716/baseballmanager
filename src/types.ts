@@ -134,6 +134,9 @@ export type GameEvent =
 export interface LineupSlot {
   playerId: PlayerId;
   position: Position;
+  /** Optional display name. The engine ignores this; it travels with the setup
+   *  so non-scorer clients (e.g. the live follower) can show readable names. */
+  name?: string;
 }
 
 export interface TeamLineup {

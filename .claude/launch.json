@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "app",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/src/server.js"],
+      "port": 8787
+    },
+    {
       "name": "web",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8125", "--directory", "web"],
