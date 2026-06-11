@@ -29,6 +29,12 @@ export {
 export { validate, applyChecked, type Problem } from "./validate";
 export { defaultRunnerMoves } from "./defaults";
 export {
+  editableRunners,
+  toRunnerMoves,
+  type RunnerEdit,
+  type RunnerDest,
+} from "./runners";
+export {
   stats,
   type StatsResult,
   type BattingLine,
