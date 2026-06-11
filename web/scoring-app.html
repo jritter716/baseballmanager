@@ -314,9 +314,21 @@ function doPitch(result){
   else if(after.count.strikes>=3) evs.push({type:"pa_result",batter:b,pitcher:p,outcome:"strikeout"});
   client.commit(evs);
 }
+/* The engine's default-and-override is one-tap for routine plays. But a couple of
+   hits are genuine coin-flips for one runner's advancement, where the "+1 base"
+   default is often wrong — so we auto-open the (pre-filled) adjust sheet for just
+   those, and leave everything else one-tap. */
+function isAmbiguousAdvancement(outcome,bases){
+  if(outcome==="single") return bases[2]!==undefined; // runner on 2nd: 3rd (default) vs scores
+  if(outcome==="double") return bases[1]!==undefined; // runner on 1st: 3rd (default) vs scores
+  return false;
+}
+
 function doOutcome(outcome){
   if(!client) return;
-  if(adjustMode){ openOverride(outcome); return; }   // adjust-runners armed -> open sheet
+  if(adjustMode){ openOverride(outcome); return; }   // manual chip armed -> open sheet
+  const bases=reduce(setup,log()).bases;
+  if(isAmbiguousAdvancement(outcome,bases)){ openOverride(outcome,true); return; } // auto-prompt the coin-flip hits
   commitOutcome(outcome);                              // routine: one tap, engine defaults
 }
 function commitOutcome(outcome,runners){
@@ -342,10 +354,10 @@ function renderAdjustChip(){
   c.querySelector("#adjustLabel").textContent = adjustMode ? "Adjust runners: ON — pick the play" : "⊕ Adjust runners";
 }
 
-function openOverride(outcome){
+function openOverride(outcome,auto){
   const s=reduce(setup,log());
   pending={ outcome, batter:currentBatter(s), bases:{...s.bases}, edits:editableRunners(outcome,s.bases,currentBatter(s)) };
-  document.getElementById("sheetTitle").textContent=(OUTCOME_LBL[outcome]||outcome)+" · adjust runners";
+  document.getElementById("sheetTitle").textContent=(OUTCOME_LBL[outcome]||outcome)+(auto?" · confirm runner advance":" · adjust runners");
   renderSheetBody();
   document.getElementById("sheet").classList.add("open");
 }

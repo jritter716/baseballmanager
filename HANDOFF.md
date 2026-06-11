@@ -172,7 +172,10 @@ The server assigns the authoritative `seq` on append; `reduce` orders by `seq`.
   last action and re-folds; on-base panel records steals/caught-stealing; export
   drawer shows the raw event stream + CSV/JSON. **Runner-advancement override**
   ("Adjust runners" sheet) lets the scorer correct non-routine baserunning while
-  routine plays stay one tap.
+  routine plays stay one tap. The sheet **auto-opens (pre-filled) only for the
+  genuinely-ambiguous hits** — a single with a runner on 2nd, or a double with a
+  runner on 1st (`isAmbiguousAdvancement` in `scoring-app.html`) — and stays
+  one-tap for everything else; the manual chip remains available for any play.
 - **Game setup / roster (Phase 4)** — `setup.html` (the landing page) lists
   existing games and creates new ones from custom team names + lineups (name,
   optional jersey, position). The scorer opens a game by id; its setup is loaded
