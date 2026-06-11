@@ -7,7 +7,7 @@ import { apply, initialState } from "./reducer";
 import { defaultRunnerMoves } from "./defaults";
 import { GameEvent, RunnerMove } from "./types";
 
-const store = new GameStore();
+let store = new GameStore();
 const subscribers = new Map<string, Set<http.ServerResponse>>();
 
 function subs(id: string): Set<http.ServerResponse> {
@@ -106,7 +106,9 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString());
 }
 
-export function startServer(port: number): http.Server {
+export function startServer(port: number, opts: { storeFile?: string } = {}): http.Server {
+  // Durable when a log file is given; otherwise in-memory (tests/ephemeral).
+  if (opts.storeFile) store = new GameStore({ file: opts.storeFile });
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://localhost:${port}`);
@@ -195,7 +197,11 @@ export function startServer(port: number): http.Server {
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 8787);
-  startServer(port);
+  const storeFile = process.env.STORE_FILE || path.join(__dirname, "..", "..", "data", "games.jsonl");
+  startServer(port, { storeFile });
   // eslint-disable-next-line no-console
-  console.log(`scoring server listening on :${port}`);
+  console.log(`scoring server listening on :${port} (store: ${storeFile})`);
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => { store.close(); process.exit(0); });
+  }
 }
