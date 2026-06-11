@@ -35,6 +35,7 @@ authoritative recompute after offline sync), and the two are guaranteed to agree
 | `src/sync.ts` | Offline-first reconciliation of local/remote logs (device side) |
 | `src/store.ts` | Authoritative event store: idempotent append + derived views |
 | `src/server.ts` | HTTP sync endpoints + SSE follower stream with gap-resume |
+| `src/client.ts` | Browser/mobile-safe entrypoint: the pure pieces only (no Node deps), bundled for the web/mobile UI by `npm run build:web` |
 
 ## Quick start
 

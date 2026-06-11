@@ -22,8 +22,10 @@ that the underlying event log is exportable as CSV/JSON, first-class.
 ## Current status at a glance
 
 - **Engine + backend** (`/src`): TypeScript, strict, zero runtime dependencies.
-- **Live scoring web app** (`/web/scoring-app.html`): self-contained HTML, runs
-  the engine logic, fully event-driven. Demo/reference UI.
+- **Live scoring web app** (`/web/scoring-app.html`): event-driven UI that
+  **imports the compiled engine** (`web/dist/engine.js`, bundled from
+  `src/client.ts` by `npm run build:web`) — no engine logic lives in the page
+  anymore. Demo/reference UI.
 - **Tests**: `npm test` runs four suites — **122 assertions, all passing**
   (engine 67, Retrosheet replay 27, decisions 12, sync/store 16). A fifth,
   `test:server`, is an in-process HTTP/SSE integration test that needs a
@@ -86,7 +88,8 @@ baseball-engine/
 │   ├── sync.ts         # offline-first reconciliation (device side, pure)
 │   ├── store.ts        # authoritative event store: idempotent append + views
 │   ├── server.ts       # HTTP sync endpoints + SSE follower stream (gap-resume)
-│   └── index.ts        # public API surface
+│   ├── index.ts        # full public API surface (Node: includes store/server)
+│   └── client.ts       # browser/mobile-safe entrypoint (pure pieces, no Node deps)
 ├── tests/
 │   ├── run.ts              # engine: scoring rules, walks, pitch limits, validation
 │   ├── retrosheet.test.ts  # replay a hand-built game; ER matches data,er records
@@ -94,7 +97,8 @@ baseball-engine/
 │   ├── sync.test.ts        # merge logic + idempotent store append
 │   └── server.test.ts      # in-process HTTP/SSE integration (needs a socket)
 ├── web/
-│   └── scoring-app.html # self-contained live-scoring UI (engine inlined as JS)
+│   ├── scoring-app.html # live-scoring UI; imports the compiled engine bundle
+│   └── dist/engine.js   # generated ESM bundle of src/client.ts (gitignored)
 ├── README.md            # fuller architecture notes
 ├── package.json         # scripts: build, test, test:server, serve
 └── tsconfig.json
@@ -195,7 +199,13 @@ npm test          # tsc + engine, retrosheet, decisions, sync suites (122 assert
 npm run test:server   # in-process HTTP/SSE integration test (needs a bindable socket)
 npm run serve         # start the server (PORT env, default 8787)
 npm run build         # tsc -> dist/
+npm run build:web     # esbuild src/client.ts -> web/dist/engine.js (the web app's engine)
 ```
+
+To run the web app: `npm run build:web`, then serve the `web/` directory over
+http (e.g. `python3 -m http.server --directory web 8125`) and open
+`scoring-app.html`. It must be served over http because it loads the engine as
+an ES module.
 
 Server endpoints: `POST /games`, `POST /games/:id/events`,
 `GET /games/:id/events?since=N`, `GET /games/:id/state`,
@@ -238,9 +248,13 @@ Server endpoints: `POST /games`, `POST /games/:id/events`,
 - **The reducer stays pure.** No I/O, no clock, no randomness inside `apply`.
 - **Use the Retrosheet replay as the oracle** for any scoring-rule change: if a
   real game's derived box score still matches, you didn't regress.
-- **The `web/scoring-app.html` engine is a hand-kept JS port** of the TS modules.
-  If you change engine logic, update both, or (better) refactor the UI to import
-  the compiled engine so there's one source.
+- **The engine is single-sourced.** `web/scoring-app.html` imports the compiled
+  bundle (`web/dist/engine.js`, built from `src/client.ts` via `npm run
+  build:web`); there is no hand-kept JS port to keep in sync. If you change
+  engine logic, rebuild the bundle — never re-inline engine functions into the
+  page. The page keeps only UI and thin presentation helpers (`playLog`, verb
+  maps) that call the imported functions. (Note: ES-module imports require the
+  page to be **served over http**, not opened via `file://`.)
 - **Document judgment calls in code** (as done for earned runs and decisions)
   rather than pretending the rules are fully deterministic.
 
