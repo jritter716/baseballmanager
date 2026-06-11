@@ -213,43 +213,18 @@
   </div>
 </div>
 
-<script>
-/* ----- engine (ported verbatim from the TypeScript modules) ----- */
-function occupied(b){return [3,2,1].filter(x=>b[x]!==undefined);}
-function advanceAll(b,n,bat,bto){const m=[];for(const x of occupied(b)){const d=x+n;if(d>=4)m.push({id:b[x],from:x,to:"home",rbiTo:bat});else m.push({id:b[x],from:x,to:d});}if(bto==="home")m.push({id:bat,from:"batter",to:"home",rbiTo:bat});else m.push({id:bat,from:"batter",to:bto});return m;}
-function forceWalk(b,bat){const m=[{id:bat,from:"batter",to:1}];if(b[1]===undefined)return m;if(b[2]===undefined){m.push({id:b[1],from:1,to:2});return m;}if(b[3]===undefined){m.push({id:b[2],from:2,to:3});m.push({id:b[1],from:1,to:2});return m;}m.push({id:b[3],from:3,to:"home",rbiTo:bat});m.push({id:b[2],from:2,to:3});m.push({id:b[1],from:1,to:2});return m;}
-function defaultRunnerMoves(o,b,bat){switch(o){
-  case"single":return advanceAll(b,1,bat,1);
-  case"double":return advanceAll(b,2,bat,2);
-  case"triple":return advanceAll(b,3,bat,3);
-  case"home_run":return advanceAll(b,4,bat,"home");
-  case"walk":case"intentional_walk":case"hit_by_pitch":return forceWalk(b,bat);
-  case"strikeout":return [{id:bat,from:"batter",to:"out",outBy:["C"]}];
-  case"groundout":case"flyout":case"lineout":case"popout":return [{id:bat,from:"batter",to:"out"}];
-  case"sacrifice_fly":{const m=[{id:bat,from:"batter",to:"out"}];if(b[3]!==undefined)m.push({id:b[3],from:3,to:"home",rbiTo:bat});return m;}
-  case"sacrifice_bunt":{const m=[{id:bat,from:"batter",to:"out"}];for(const x of occupied(b)){const d=x+1;if(d>=4)m.push({id:b[x],from:x,to:"home"});else m.push({id:b[x],from:x,to:d});}return m;}
-  case"fielders_choice":{const m=[{id:bat,from:"batter",to:1}];const l=[1,2,3].reverse().find(x=>b[x]!==undefined);if(l!==undefined)m.push({id:b[l],from:l,to:"out",outBy:["SS"]});return m;}
-  case"reached_on_error":return [{id:bat,from:"batter",to:1,onError:true},...occupied(b).map(x=>{const d=x+1;return d>=4?{id:b[x],from:x,to:"home",onError:true}:{id:b[x],from:x,to:d};})];
-  case"double_play":{const m=[{id:bat,from:"batter",to:"out",outBy:["1B"]}];const l=[1,2,3].find(x=>b[x]!==undefined);if(l!==undefined)m.push({id:b[l],from:l,to:"out",outBy:["SS","2B"]});return m;}
-  case"triple_play":{const m=[{id:bat,from:"batter",to:"out"}];for(const x of occupied(b).slice(0,2))m.push({id:b[x],from:x,to:"out"});return m;}
-  default:return [{id:bat,from:"batter",to:"out"}];
-}}
-function pitcherOfLineup(s){const p=s.find(x=>x.position==="P");return p?p.playerId:s[0].playerId;}
-function initLineupState(su){return {away:su.away.battingOrder.map(s=>({...s})),home:su.home.battingOrder.map(s=>({...s}))};}
-function initialState(su){return {inning:1,half:"top",outs:0,count:{balls:0,strikes:0},bases:{},score:{away:0,home:0},battingTeam:"away",order:{away:0,home:0},pitcher:{away:pitcherOfLineup(su.away.battingOrder),home:pitcherOfLineup(su.home.battingOrder)},pitchCount:{},lineup:initLineupState(su)};}
-function clone(s){return {...s,count:{...s.count},bases:{...s.bases},score:{...s.score},order:{...s.order},pitcher:{...s.pitcher},pitchCount:{...s.pitchCount},lineup:{away:s.lineup.away.map(x=>({...x})),home:s.lineup.home.map(x=>({...x}))}};}
-function fieldingSide(bt){return bt==="away"?"home":"away";}
-function endHalfInning(s){const n=clone(s);n.outs=0;n.bases={};n.count={balls:0,strikes:0};if(s.half==="top"){n.half="bottom";n.battingTeam="home";}else{n.half="top";n.battingTeam="away";n.inning=s.inning+1;}return n;}
-function advanceBatter(s){const n=clone(s);const sd=s.battingTeam;n.order[sd]=(s.order[sd]+1)%s.lineup[sd].length;return n;}
-function applyPitch(s,e){const n=clone(s);n.pitchCount[e.pitcher]=(n.pitchCount[e.pitcher]||0)+1;let {balls,strikes}=n.count;switch(e.result){case"ball":balls++;break;case"called_strike":case"swinging_strike":case"foul_tip":strikes++;break;case"foul":strikes=Math.min(strikes+1,2);break;}n.count={balls,strikes};return n;}
-function applyRunnerMoves(s,mv){const n=clone(s);for(const m of mv){if(m.from!=="batter")delete n.bases[m.from];}let r=0;for(const m of mv){if(m.to==="home")r++;else if(m.to==="out")n.outs++;else n.bases[m.to]=m.id;}n.score[s.battingTeam]+=r;return n;}
-function applyPaResult(s,e){const mv=e.runners||defaultRunnerMoves(e.outcome,s.bases,e.batter);let n=applyRunnerMoves(s,mv);n.count={balls:0,strikes:0};n=advanceBatter(n);if(n.outs>=3)n=endHalfInning(n);return n;}
-function applyBaserunning(s,e){let n=applyRunnerMoves(s,e.runners);if(n.outs>=3)n=endHalfInning(n);return n;}
-function applySub(s,e){const n=clone(s);const o=n.lineup[e.team];o[e.slot]={playerId:e.playerIn,position:e.position||(o[e.slot]&&o[e.slot].position)||"DH"};if(e.kind==="pitching"||e.position==="P")n.pitcher[e.team]=e.playerIn;return n;}
-function apply(s,e){switch(e.type){case"pitch":return applyPitch(s,e);case"pa_result":return applyPaResult(s,e);case"baserunning":return applyBaserunning(s,e);case"substitution":return applySub(s,e);default:return s;}}
-function reduce(su,ev){return [...ev].sort((a,b)=>a.seq-b.seq).reduce(apply,initialState(su));}
-function currentBatter(s){const sd=s.battingTeam;return s.lineup[sd][s.order[sd]%s.lineup[sd].length].playerId;}
-function currentPitcher(s){return s.pitcher[fieldingSide(s.battingTeam)];}
+<script type="module">
+/* ----- engine: the single compiled source of truth -----
+   Bundled from src/client.ts (the TypeScript engine) by `npm run build:web`.
+   No engine logic lives in this page anymore — only UI and the thin
+   presentation helpers below, which call the imported functions. */
+import {
+  reduce, apply, initialState,
+  currentBatter, currentPitcher,
+  defaultRunnerMoves,
+} from "./dist/engine.js";
+
+/* ----- play-by-play text (UI-only presentation, built on the imported engine) ----- */
 const PA_VERB={single:"singles",double:"doubles",triple:"triples",home_run:"homers",walk:"walks",intentional_walk:"walks (IBB)",hit_by_pitch:"hit by pitch",strikeout:"strikes out",groundout:"grounds out",flyout:"flies out",lineout:"lines out",popout:"pops out",fielders_choice:"reaches on fielder's choice",reached_on_error:"reaches on error",sacrifice_fly:"sac fly",sacrifice_bunt:"sac bunt",double_play:"into a double play",triple_play:"into a triple play"};
 function baseName(b){return b===2?"second":b===3?"third":b==="home"?"home":"first";}
 const BR_VERB={stolen_base:"steals",caught_stealing:"caught stealing",wild_pitch:"wild pitch",passed_ball:"passed ball",balk:"balk",pickoff:"picked off",other:"advances"};
