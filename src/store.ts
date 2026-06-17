@@ -125,15 +125,31 @@ export class GameStore {
   }
 
   /** Append events idempotently. Events already present (by id) are skipped.
-   *  New events get a server-assigned monotonic `seq` (the authoritative order). */
-  append(id: string, incoming: Array<GameEvent & { id?: string }>): EventEnvelope[] {
+   *  New events get a server-assigned monotonic `seq` (the authoritative order)
+   *  and the §3 invariant: org/team scope (from the game; the home team owns the
+   *  stream), a server timestamp, and the recording actor (when known). */
+  append(
+    id: string,
+    incoming: Array<GameEvent & { id?: string }>,
+    meta: { actor?: string } = {},
+  ): EventEnvelope[] {
     const rec = this.require(id);
+    const orgId = rec.setup.orgId;
+    const teamId = rec.setup.homeTeamId ?? rec.setup.awayTeamId; // home team owns the stream
     const seen = new Set(rec.events.map((e) => e.id));
     const appended: EventEnvelope[] = [];
     for (const ev of incoming) {
       const eid = ev.id ?? randomUUID();
       if (seen.has(eid)) continue;
-      const stored = { ...ev, id: eid, seq: ++rec.serverSeq } as EventEnvelope;
+      const stored = {
+        ...ev,
+        id: eid,
+        seq: ++rec.serverSeq,
+        ...(orgId ? { orgId } : {}),
+        ...(teamId ? { teamId } : {}),
+        timestamp: new Date().toISOString(),
+        ...(meta.actor ? { actor: meta.actor } : {}),
+      } as EventEnvelope;
       rec.events.push(stored);
       seen.add(eid);
       appended.push(stored);

@@ -1,8 +1,18 @@
 import { GameEvent } from "./types";
 
 /** An event with a stable global id (for idempotent sync) on top of the
- *  engine's ordering `seq`. The engine itself ignores `id`. */
-export type EventEnvelope = GameEvent & { id: string };
+ *  engine's ordering `seq`, plus the Clutch event-stream invariant (§3):
+ *  org/team scope, a server timestamp, and the actor who recorded it. The
+ *  engine/reducer ignores all of these — they exist for access control,
+ *  auditing, and read projections. Optional so legacy/hand-built events and the
+ *  pure reducer are unaffected; the server stamps them on every real append. */
+export type EventEnvelope = GameEvent & {
+  id: string;
+  orgId?: string;        // the game's org
+  teamId?: string;       // the team that owns this game's stream (home team)
+  timestamp?: string;    // ISO time the server appended it (authoritative, like seq)
+  actor?: string;        // PersonId who recorded it (set once auth is enforced)
+};
 
 /**
  * Offline-first sync model
