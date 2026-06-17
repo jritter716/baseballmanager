@@ -152,6 +152,13 @@ export interface GameSetup {
   home: TeamLineup;
   /** Innings in a regulation game (used only by gameStatus helper). */
   regulationInnings?: number;
+  /** Clutch identity refs (opaque strings to the engine; branded ids in the
+   *  access/identity layer). Present when a game is created from real rosters,
+   *  so events can later be stamped with org/team and access can be enforced.
+   *  `battingOrder[].playerId` are stable roster ids in that case. */
+  orgId?: string;
+  awayTeamId?: string;
+  homeTeamId?: string;
 }
 
 // ---------------------------------------------------------------------------

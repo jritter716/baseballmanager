@@ -50,19 +50,15 @@
   <h2>New game</h2>
   <div class="card">
     <div class="row" style="gap:10px">
-      <div style="flex:1"><label>Away team</label><input id="awayName" placeholder="Away" autocomplete="off" /></div>
-      <div style="flex:1"><label>Home team</label><input id="homeName" placeholder="Home" autocomplete="off" /></div>
+      <div style="flex:1"><label>Away team</label><select id="awaySel"><option value="">— choose —</option></select></div>
+      <div style="flex:1"><label>Home team</label><select id="homeSel"><option value="">— choose —</option></select></div>
     </div>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px">
-      <label style="margin:0">Away lineup</label><button class="seed" data-seed="away">demo names</button>
-    </div>
-    <div id="awayLineup"></div>
+    <div style="margin:14px 0 6px"><label style="margin:0">Away lineup</label></div>
+    <div id="awayLineup"><div class="muted">Pick a team to load its roster.</div></div>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px">
-      <label style="margin:0">Home lineup</label><button class="seed" data-seed="home">demo names</button>
-    </div>
-    <div id="homeLineup"></div>
+    <div style="margin:14px 0 6px"><label style="margin:0">Home lineup</label></div>
+    <div id="homeLineup"><div class="muted">Pick a team to load its roster.</div></div>
 
     <button class="start" id="start">Start game ▸</button>
     <div class="err" id="err"></div>
@@ -73,46 +69,53 @@
 const API_BASE = new URLSearchParams(location.search).get("api") || "";
 const POSITIONS = ["P","C","1B","2B","3B","SS","LF","CF","RF","DH"];
 const DEFAULT_ORDER = ["SS","CF","1B","C","3B","2B","RF","LF","P"];
-const DEMO = {
-  away: ["Avery P.","Mason T.","Diego R.","Liam K.","Noah B.","Eli W.","Caleb M.","Owen S.","Jack D."],
-  home: ["Tyler M.","Sam K.","Marcus D.","Cole R.","Drew L.","Ben A.","Luca P.","Ivan G.","Reese T."],
-};
 
-function lineupRows(containerId){
-  const box = document.getElementById(containerId);
-  box.innerHTML = DEFAULT_ORDER.map((pos,i)=>
-    '<div class="row">'+
-      '<span class="slot">'+(i+1)+'</span>'+
-      '<input class="jersey" inputmode="numeric" placeholder="#" maxlength="2" />'+
-      '<input class="nm" placeholder="Player name" autocomplete="off" />'+
-      '<select class="pos">'+POSITIONS.map(p=>'<option'+(p===pos?" selected":"")+'>'+p+'</option>').join("")+'</select>'+
-    '</div>'
-  ).join("");
-  return box;
+let teams = [];                 // {id, orgId, name}
+const rosters = {};             // teamId -> [{id, name, jersey}]
+const chosen = { away: null, home: null };
+
+async function loadTeams(){
+  try{ const r = await fetch(API_BASE+"/teams"); teams = (await r.json()).teams || []; }
+  catch(e){ teams = []; }
+  for(const side of ["away","home"]){
+    const sel = document.getElementById(side+"Sel");
+    sel.innerHTML = '<option value="">— choose —</option>' + teams.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join("");
+    sel.addEventListener("change", ()=>pickTeam(side, sel.value));
+  }
+  if(!teams.length) document.getElementById("err").textContent = "No teams found — seed the org first (npm run seed), then reload.";
 }
-lineupRows("awayLineup"); lineupRows("homeLineup");
 
-document.querySelectorAll("[data-seed]").forEach(b=>b.addEventListener("click",()=>{
-  const side=b.getAttribute("data-seed");
-  const rows=document.querySelectorAll("#"+side+"Lineup .row");
-  DEMO[side].forEach((nm,i)=>{ if(rows[i]) rows[i].querySelector(".nm").value=nm; });
-  if(side==="away" && !document.getElementById("awayName").value) document.getElementById("awayName").value="Mustangs";
-  if(side==="home" && !document.getElementById("homeName").value) document.getElementById("homeName").value="Hawks";
-}));
+async function pickTeam(side, teamId){
+  chosen[side] = teamId || null;
+  const box = document.getElementById(side+"Lineup");
+  if(!teamId){ box.innerHTML = '<div class="muted">Pick a team to load its roster.</div>'; return; }
+  if(!rosters[teamId]){
+    try{ const r = await fetch(API_BASE+"/teams/"+encodeURIComponent(teamId)+"/roster"); rosters[teamId] = (await r.json()).roster || []; }
+    catch(e){ rosters[teamId] = []; }
+  }
+  const roster = rosters[teamId];
+  if(!roster.length){ box.innerHTML = '<div class="muted">This team has no roster yet.</div>'; return; }
+  box.innerHTML = roster.map((p,i)=>{
+    const pos = DEFAULT_ORDER[i] || "DH";
+    return '<div class="row" data-pid="'+esc(p.id)+'">'+
+      '<span class="slot">'+(i+1)+'</span>'+
+      '<span class="jersey" style="text-align:center">'+(p.jersey?("#"+esc(p.jersey)):"")+'</span>'+
+      '<span class="nm">'+esc(p.name)+'</span>'+
+      '<select class="pos">'+POSITIONS.map(x=>'<option'+(x===pos?" selected":"")+'>'+x+'</option>').join("")+'</select>'+
+    '</div>';
+  }).join("");
+}
 
-function readLineup(containerId, prefix){
-  const rows=[...document.querySelectorAll("#"+containerId+" .row")];
-  const order=[];
-  rows.forEach((r)=>{
-    const name=r.querySelector(".nm").value.trim();
-    if(!name) return;                         // skip empty rows
-    const jersey=r.querySelector(".jersey").value.trim();
-    const position=r.querySelector(".pos").value;
-    const slot={ playerId: prefix+(order.length+1), position, name };
-    if(jersey) slot.jersey=jersey;
-    order.push(slot);
+// Build a batting order of stable roster PlayerIds (the unified identity).
+function buildOrder(side){
+  const roster = rosters[chosen[side]] || [];
+  return [...document.querySelectorAll("#"+side+"Lineup .row")].map((r)=>{
+    const pid = r.getAttribute("data-pid");
+    const p = roster.find((x)=>x.id===pid) || {};
+    const slot = { playerId: pid, position: r.querySelector(".pos").value, name: p.name || "" };
+    if(p.jersey) slot.jersey = p.jersey;
+    return slot;
   });
-  return order;
 }
 
 async function loadGames(){
@@ -131,13 +134,16 @@ function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 
 document.getElementById("start").addEventListener("click", async ()=>{
   const err=document.getElementById("err"); err.textContent="";
-  const awayName=document.getElementById("awayName").value.trim();
-  const homeName=document.getElementById("homeName").value.trim();
-  const away=readLineup("awayLineup","a");
-  const home=readLineup("homeLineup","h");
-  if(!awayName||!homeName){ err.textContent="Enter both team names."; return; }
-  if(!away.length||!home.length){ err.textContent="Each team needs at least one player."; return; }
-  const setup={ away:{teamId:awayName, battingOrder:away}, home:{teamId:homeName, battingOrder:home} };
+  if(!chosen.away || !chosen.home){ err.textContent="Pick both teams."; return; }
+  const away=buildOrder("away"), home=buildOrder("home");
+  if(!away.length || !home.length){ err.textContent="Both teams need a roster."; return; }
+  const awayTeam=teams.find(t=>t.id===chosen.away), homeTeam=teams.find(t=>t.id===chosen.home);
+  const setup={
+    orgId: awayTeam.orgId,
+    awayTeamId: chosen.away, homeTeamId: chosen.home,
+    away:{ teamId: awayTeam.name, battingOrder: away },
+    home:{ teamId: homeTeam.name, battingOrder: home },
+  };
   try{
     const r=await fetch(API_BASE+"/games",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({setup})});
     if(!r.ok) throw new Error("HTTP "+r.status);
@@ -146,6 +152,7 @@ document.getElementById("start").addEventListener("click", async ()=>{
   }catch(e){ err.textContent="Couldn't create the game (server offline?)."; }
 });
 
+loadTeams();
 loadGames();
 </script>
 </body>
