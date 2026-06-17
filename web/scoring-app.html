@@ -280,6 +280,7 @@ import {
 
 import { playLog } from "./playlog.js";
 import { createSyncClient, browserStorage } from "./sync-client.js";
+import { currentPersonId, authHeaders } from "./identity.js";
 
 /* Register the service worker for installability + offline launch. */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -511,13 +512,13 @@ document.getElementById("downloadCsv").addEventListener("click",()=>{
 async function boot(){
   if(!gameId) return;
   try{
-    const r=await fetch(API_BASE+"/games/"+gameId+"/export.json");
+    const r=await fetch(API_BASE+"/games/"+gameId+"/export.json", { headers: authHeaders() });
     if(r.ok){ setup=(await r.json()).setup; localStorage.setItem(SETUP_KEY,JSON.stringify(setup)); }
   }catch(e){ /* offline: fall back to cache */ }
   if(!setup){ const c=localStorage.getItem(SETUP_KEY); if(c){ try{ setup=JSON.parse(c); }catch{} } }
   if(!setup){ document.getElementById("batterName").textContent="Open while online"; flash("Couldn't load this game — open it once while online."); return; }
   NAMES={}; for(const side of ["away","home"]) for(const sl of setup[side].battingOrder) NAMES[sl.playerId]=sl.name||sl.playerId;
-  client=createSyncClient({ setup, gameId, baseUrl:API_BASE, storage:browserStorage("scorekeeper:game:"+gameId), onChange:render, onStatus:renderStatus });
+  client=createSyncClient({ setup, gameId, personId:currentPersonId(), baseUrl:API_BASE, storage:browserStorage("scorekeeper:game:"+gameId), onChange:render, onStatus:renderStatus });
   client.init();
 }
 boot();

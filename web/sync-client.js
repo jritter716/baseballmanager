@@ -40,6 +40,7 @@ export function createSyncClient(opts) {
   const {
     setup,
     gameId: initialGameId = null,   // open an existing game instead of creating one
+    personId = "",                  // who is acting (sent as X-Person-Id for access)
     baseUrl = "",
     storage = browserStorage(),
     fetchImpl = (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null),
@@ -142,9 +143,12 @@ export function createSyncClient(opts) {
 
   async function api(method, pathPart, body) {
     if (!fetchImpl) throw new Error("no fetch available");
+    const headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (personId) headers["X-Person-Id"] = personId;
     const res = await fetchImpl(baseUrl + pathPart, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

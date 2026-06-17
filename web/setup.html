@@ -44,6 +44,11 @@
 <div class="wrap">
   <h1>⚾ Scorekeeper</h1>
 
+  <div class="card" style="margin-bottom:6px">
+    <label>Acting as <span style="color:var(--dim);text-transform:none;letter-spacing:0">(Phase-0 stub — replaced by real login)</span></label>
+    <select id="actingAs"><option value="">— choose person —</option></select>
+  </div>
+
   <h2>Resume a game</h2>
   <div class="games" id="games"><div class="muted">Loading…</div></div>
 
@@ -66,7 +71,20 @@
 </div>
 
 <script type="module">
+import { currentPersonId, setPersonId, authHeaders } from "./identity.js";
 const API_BASE = new URLSearchParams(location.search).get("api") || "";
+
+// Acting-as picker (Phase-0 stub identity). Selecting a person sets who you act
+// as for every request; teams/games then filter to what that person may see.
+async function loadPersons(){
+  const sel = document.getElementById("actingAs");
+  let persons = [];
+  try{ persons = (await fetch(API_BASE+"/persons").then(r=>r.json())).persons || []; }catch(e){}
+  const cur = currentPersonId();
+  sel.innerHTML = '<option value="">— choose person —</option>' +
+    persons.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===cur?" selected":"")+'>'+esc(p.name)+(p.isOrgAdmin?" (admin)":"")+'</option>').join("");
+  sel.addEventListener("change", ()=>{ setPersonId(sel.value); loadTeams(); loadGames(); });
+}
 const POSITIONS = ["P","C","1B","2B","3B","SS","LF","CF","RF","DH"];
 const DEFAULT_ORDER = ["SS","CF","1B","C","3B","2B","RF","LF","P"];
 
@@ -75,7 +93,7 @@ const rosters = {};             // teamId -> [{id, name, jersey}]
 const chosen = { away: null, home: null };
 
 async function loadTeams(){
-  try{ const r = await fetch(API_BASE+"/teams"); teams = (await r.json()).teams || []; }
+  try{ const r = await fetch(API_BASE+"/teams", { headers: authHeaders() }); teams = (await r.json()).teams || []; }
   catch(e){ teams = []; }
   for(const side of ["away","home"]){
     const sel = document.getElementById(side+"Sel");
@@ -90,7 +108,7 @@ async function pickTeam(side, teamId){
   const box = document.getElementById(side+"Lineup");
   if(!teamId){ box.innerHTML = '<div class="muted">Pick a team to load its roster.</div>'; return; }
   if(!rosters[teamId]){
-    try{ const r = await fetch(API_BASE+"/teams/"+encodeURIComponent(teamId)+"/roster"); rosters[teamId] = (await r.json()).roster || []; }
+    try{ const r = await fetch(API_BASE+"/teams/"+encodeURIComponent(teamId)+"/roster", { headers: authHeaders() }); rosters[teamId] = (await r.json()).roster || []; }
     catch(e){ rosters[teamId] = []; }
   }
   const roster = rosters[teamId];
@@ -121,7 +139,7 @@ function buildOrder(side){
 async function loadGames(){
   const box=document.getElementById("games");
   try{
-    const r=await fetch(API_BASE+"/games");
+    const r=await fetch(API_BASE+"/games", { headers: authHeaders() });
     const {games}=await r.json();
     if(!games.length){ box.innerHTML='<div class="muted">No games yet — create one below.</div>'; return; }
     box.innerHTML=games.slice().reverse().map(g=>{
@@ -145,13 +163,14 @@ document.getElementById("start").addEventListener("click", async ()=>{
     home:{ teamId: homeTeam.name, battingOrder: home },
   };
   try{
-    const r=await fetch(API_BASE+"/games",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({setup})});
+    const r=await fetch(API_BASE+"/games",{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({setup})});
     if(!r.ok) throw new Error("HTTP "+r.status);
     const {id}=await r.json();
     location.href="scoring-app.html?game="+encodeURIComponent(id)+(API_BASE?("&api="+encodeURIComponent(API_BASE)):"");
   }catch(e){ err.textContent="Couldn't create the game (server offline?)."; }
 });
 
+loadPersons();
 loadTeams();
 loadGames();
 </script>

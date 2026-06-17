@@ -7,7 +7,7 @@
 //     scorer is offline these simply fail, and the page's offline queue holds
 //     the events until connectivity returns.
 //   - Cross-origin (web fonts): stale-while-revalidate.
-const VERSION = "scorekeeper-v2";
+const VERSION = "scorekeeper-v3";
 const SHELL = [
   "./",
   "setup.html",
@@ -16,6 +16,7 @@ const SHELL = [
   "dist/engine.js",
   "playlog.js",
   "sync-client.js",
+  "identity.js",
   "manifest.webmanifest",
   "icon-192.png",
   "icon-512.png",
@@ -42,7 +43,7 @@ self.addEventListener("fetch", (e) => {
   const sameOrigin = url.origin === self.location.origin;
 
   // API + live stream: always network, never cached.
-  if (sameOrigin && url.pathname.startsWith("/games")) return;
+  if (sameOrigin && (url.pathname.startsWith("/games") || url.pathname.startsWith("/teams") || url.pathname.startsWith("/persons"))) return;
 
   if (sameOrigin) {
     // App shell: cache-first, fall back to network, then to the app page.
