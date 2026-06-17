@@ -104,6 +104,7 @@ export class IdentityStore {
   }
 
   // ---- reads ----
+  listPersons(): Person[] { return [...this.persons.values()]; }
   listTeams(): Team[] { return [...this.teamsById.values()]; }
   getTeam(id: TeamId): Team | undefined { return this.teamsById.get(id); }
   rosterOf(teamId: TeamId): RosterPlayer[] { return [...this.players.values()].filter((p) => p.teamId === teamId); }

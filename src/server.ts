@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { GameStore } from "./store";
 import { IdentityStore } from "./identity";
-import { TeamId } from "./access";
+import { TeamId, PersonId, Principal, ResourceRef, canRead, canWrite } from "./access";
 import { EventEnvelope } from "./sync";
 import { apply, initialState } from "./reducer";
 import { defaultRunnerMoves } from "./defaults";
@@ -93,8 +93,25 @@ async function serveStatic(pathname: string, res: http.ServerResponse): Promise<
 function cors(res: http.ServerResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID, X-Person-Id");
 }
+
+// --- access enforcement (canRead/canWrite at the boundary) ---
+// Phase-0 stub auth: the acting person comes from the `X-Person-Id` header
+// (fetch) or `?personId=` query (EventSource can't set headers). Replace with a
+// real session/login source later; the decision layer (access.ts) stays the same.
+function principalFromReq(req: http.IncomingMessage, url: URL): Principal | null {
+  const pid = (req.headers["x-person-id"] as string) || url.searchParams.get("personId") || "";
+  return pid ? identity.resolvePrincipal(pid as unknown as PersonId) : null;
+}
+/** The team whose stream a game belongs to (the home team owns it). */
+function ownerTeamId(gameId: string): TeamId | undefined {
+  const rec = store.get(gameId);
+  return (rec?.setup.homeTeamId ?? rec?.setup.awayTeamId) as unknown as TeamId | undefined;
+}
+const allowRead = (p: Principal | null, r: ResourceRef) => !!p && canRead(p, r);
+const allowWrite = (p: Principal | null, r: ResourceRef) => !!p && canWrite(p, r);
+function forbid(res: http.ServerResponse) { return json(res, 403, { error: "forbidden" }); }
 
 function json(res: http.ServerResponse, code: number, body: unknown) {
   cors(res);
@@ -121,24 +138,40 @@ export function startServer(port: number, opts: { storeFile?: string; identityFi
 
       if (method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
 
-      // GET /games  -> list games (for the picker)
-      if (method === "GET" && parts.length === 1 && parts[0] === "games") {
-        return json(res, 200, { games: store.list() });
+      const principal = principalFromReq(req, url);
+
+      // GET /persons  -> DEV STUB for the "acting as" picker (replace with real
+      // auth). Lists names so the UI can choose who you are before login exists.
+      if (method === "GET" && parts.length === 1 && parts[0] === "persons") {
+        return json(res, 200, { persons: identity.listPersons().map((p) => ({ id: p.id, name: p.name, isOrgAdmin: !!p.isOrgAdmin })) });
       }
 
-      // GET /teams  -> list teams (for roster-based game creation)
+      // GET /games  -> list only the games this principal may read.
+      if (method === "GET" && parts.length === 1 && parts[0] === "games") {
+        const games = store.list().filter((g) =>
+          allowRead(principal, { kind: "GameEventStream", teamId: ownerTeamId(g.id) }));
+        return json(res, 200, { games });
+      }
+
+      // GET /teams  -> only teams this principal is affiliated with.
       if (method === "GET" && parts.length === 1 && parts[0] === "teams") {
-        return json(res, 200, { teams: identity.listTeams() });
+        const teams = identity.listTeams().filter((t) =>
+          allowRead(principal, { kind: "TeamRoster", teamId: t.id }));
+        return json(res, 200, { teams });
       }
       // GET /teams/:id/roster  -> a team's roster (stable player ids)
       if (method === "GET" && parts[0] === "teams" && parts[1] && parts[2] === "roster") {
-        return json(res, 200, { roster: identity.rosterOf(parts[1] as unknown as TeamId) });
+        const teamId = parts[1] as unknown as TeamId;
+        if (!allowRead(principal, { kind: "TeamRoster", teamId })) return forbid(res);
+        return json(res, 200, { roster: identity.rosterOf(teamId) });
       }
 
-      // POST /games  -> create
+      // POST /games  -> create (a coach/scorer of the home team, or org admin)
       if (method === "POST" && parts.length === 1 && parts[0] === "games") {
         const body = await readBody(req);
         if (!body.setup) return json(res, 400, { error: "setup required" });
+        const teamId = (body.setup.homeTeamId ?? body.setup.awayTeamId) as unknown as TeamId | undefined;
+        if (!allowWrite(principal, { kind: "GameEventStream", teamId })) return forbid(res);
         const rec = store.create(body.setup);
         return json(res, 201, { id: rec.id });
       }
@@ -146,17 +179,25 @@ export function startServer(port: number, opts: { storeFile?: string; identityFi
       if (parts[0] === "games" && parts[1]) {
         const id = parts[1];
         const sub = parts[2];
+        const streamRef: ResourceRef = { kind: "GameEventStream", teamId: ownerTeamId(id) };
 
         // POST /games/:id/events  -> idempotent append + broadcast
         if (method === "POST" && sub === "events") {
+          if (!allowWrite(principal, streamRef)) return forbid(res);
           const body = await readBody(req);
           const incoming = (body.events || []) as Array<GameEvent & { id?: string }>;
-          const appended = store.append(id, incoming);
+          const appended = store.append(id, incoming, { actor: principal!.personId });
           if (appended.length) broadcast(id, appended);
           return json(res, 200, {
             appended: appended.map((e) => ({ id: e.id, seq: e.seq })),
             serverSeq: store.scoreboard(id).serverSeq,
           });
+        }
+
+        // Everything else on a game is a read of its stream/derived views.
+        if (method === "GET" && (sub === "events" || sub === "state" || sub === "export.json" || sub === "export.csv" || sub === "stream")) {
+          if (!store.get(id)) return json(res, 404, { error: "no such game" });
+          if (!allowRead(principal, streamRef)) return forbid(res);
         }
 
         // GET /games/:id/events?since=N
@@ -183,7 +224,6 @@ export function startServer(port: number, opts: { storeFile?: string; identityFi
 
         // GET /games/:id/stream  -> SSE follower feed with resume
         if (method === "GET" && sub === "stream") {
-          if (!store.get(id)) return json(res, 404, { error: "no such game" });
           cors(res);
           res.writeHead(200, {
             "Content-Type": "text/event-stream",
