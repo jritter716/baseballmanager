@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "build:web": "esbuild src/client.ts --bundle --format=esm --target=es2020 --outfile=web/dist/engine.js",
-    "test": "tsc && npm run build:web && node dist/tests/run.js && node dist/tests/retrosheet.test.js && node dist/tests/decisions.test.js && node dist/tests/sync.test.js && node dist/tests/runners.test.js && node dist/tests/persistence.test.js && node tests/sync-client.test.mjs",
+    "test": "tsc && npm run build:web && node dist/tests/run.js && node dist/tests/retrosheet.test.js && node dist/tests/decisions.test.js && node dist/tests/sync.test.js && node dist/tests/runners.test.js && node dist/tests/persistence.test.js && node dist/tests/access.test.js && node tests/sync-client.test.mjs",
     "test:server": "tsc && node dist/tests/server.test.js",
     "serve": "tsc && npm run build:web && node dist/src/server.js"
   },
