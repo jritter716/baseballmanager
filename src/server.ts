@@ -2,12 +2,15 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { GameStore } from "./store";
+import { IdentityStore } from "./identity";
+import { TeamId } from "./access";
 import { EventEnvelope } from "./sync";
 import { apply, initialState } from "./reducer";
 import { defaultRunnerMoves } from "./defaults";
 import { GameEvent, RunnerMove } from "./types";
 
 let store = new GameStore();
+let identity = new IdentityStore();
 const subscribers = new Map<string, Set<http.ServerResponse>>();
 
 function subs(id: string): Set<http.ServerResponse> {
@@ -106,9 +109,10 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
   return JSON.parse(Buffer.concat(chunks).toString());
 }
 
-export function startServer(port: number, opts: { storeFile?: string } = {}): http.Server {
+export function startServer(port: number, opts: { storeFile?: string; identityFile?: string } = {}): http.Server {
   // Durable when a log file is given; otherwise in-memory (tests/ephemeral).
   if (opts.storeFile) store = new GameStore({ file: opts.storeFile });
+  if (opts.identityFile) identity = new IdentityStore({ file: opts.identityFile });
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://localhost:${port}`);
@@ -120,6 +124,15 @@ export function startServer(port: number, opts: { storeFile?: string } = {}): ht
       // GET /games  -> list games (for the picker)
       if (method === "GET" && parts.length === 1 && parts[0] === "games") {
         return json(res, 200, { games: store.list() });
+      }
+
+      // GET /teams  -> list teams (for roster-based game creation)
+      if (method === "GET" && parts.length === 1 && parts[0] === "teams") {
+        return json(res, 200, { teams: identity.listTeams() });
+      }
+      // GET /teams/:id/roster  -> a team's roster (stable player ids)
+      if (method === "GET" && parts[0] === "teams" && parts[1] && parts[2] === "roster") {
+        return json(res, 200, { roster: identity.rosterOf(parts[1] as unknown as TeamId) });
       }
 
       // POST /games  -> create
@@ -203,10 +216,11 @@ export function startServer(port: number, opts: { storeFile?: string } = {}): ht
 if (require.main === module) {
   const port = Number(process.env.PORT || 8787);
   const storeFile = process.env.STORE_FILE || path.join(__dirname, "..", "..", "data", "games.jsonl");
-  startServer(port, { storeFile });
+  const identityFile = process.env.IDENTITY_FILE || path.join(__dirname, "..", "..", "data", "identity.jsonl");
+  startServer(port, { storeFile, identityFile });
   // eslint-disable-next-line no-console
   console.log(`scoring server listening on :${port} (store: ${storeFile})`);
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
-    process.on(sig, () => { store.close(); process.exit(0); });
+    process.on(sig, () => { store.close(); identity.close(); process.exit(0); });
   }
 }
